@@ -113,7 +113,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$this->frontendController = $this->frontendController ?: $GLOBALS['TSFE'];
 		$this->templateService = $this->templateService ?: $this->cObj;
 
-		$this->pageRepository = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\Page\\PageRepository');
+		if (defined('TYPO3_branch') && (int)TYPO3_branch % 11 === 0) {
+			$this->pageRepository = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Domain\Repository\PageRepository::class);
+		} else {
+			$this->pageRepository = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\Page\\PageRepository');
+		}
 
 		// Debug.
 //		$this->frontendController->set_no_cache();
