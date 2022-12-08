@@ -204,7 +204,7 @@ class tx_datamintsfeuser_utils {
 			$arrPassword['normal'] = '';
 
 			for ($i = 0; $i < (($arrGenerate['length']) ? $arrGenerate['length'] : 8); $i++) {
-				$arrPassword['normal'] .= $chars{mt_rand(0, strlen($chars))};
+				$arrPassword['normal'] .= $chars[mt_rand(0, strlen($chars))];
 			}
 		}
 
