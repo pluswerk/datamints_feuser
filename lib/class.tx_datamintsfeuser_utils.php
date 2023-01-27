@@ -394,7 +394,8 @@ class tx_datamintsfeuser_utils {
 	 */
 	public static function getTemplateSubpart($templateFile, $templatePart, $markerArray = array()) {
 		// Template laden.
-		$fileFolder = \TYPO3\CMS\Core\Resource\ResourceFactory::getInstance()->retrieveFileOrFolderObject($templateFile);
+      $resourceFactory = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Resource\ResourceFactory::class);
+		$fileFolder = $resourceFactory->retrieveFileOrFolderObject($templateFile);
 
 		if (!$fileFolder && class_exists('TYPO3\\CMS\\Core\\LinkHandling\\LinkService')) {
 			$result = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\LinkHandling\\LinkService')->resolve($templateFile);

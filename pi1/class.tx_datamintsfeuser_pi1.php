@@ -1679,8 +1679,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			$mail->setFrom(array($fromEmail => $fromName));
 			$mail->setReplyTo(array($replytoEmail => $replytoName));
 			$mail->setTo(array($toEmail => $toName));
-			$mail->setBody($bodyPlain);
-			$mail->setCharset($this->frontendController->metaCharset);
+			$mail->html($bodyPlain);
 
 			if ($config['mailtype'] == 'html') {
 				$mail->addPart($bodyHtml, 'text/html', $this->frontendController->metaCharset);
