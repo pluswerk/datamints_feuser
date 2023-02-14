@@ -1682,8 +1682,8 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			$mail->html($bodyPlain);
 
 			if ($config['mailtype'] == 'html') {
-        $mail->html($bodyHtml);
-        $mail->text($bodyPlain);
+			  $mail->html($bodyHtml);
+			  $mail->text($bodyPlain);
 			}
 
 			$mail->send();
