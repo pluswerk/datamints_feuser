@@ -3015,7 +3015,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$flexConf = array();
 
 		// Extension Konfiguration ermitteln.
-		$this->extConf = unserialize($GLOBALS['TYPO3_CONF_VARS']['EXT']['extConf'][$this->extKey]);
+		$this->extConf = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'][$this->extKey];
 
 		// Alle Tabs der Flexformkonfiguration durchgehn.
 		if (is_array($this->cObj->data['pi_flexform']['data'])) {
