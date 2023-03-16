@@ -2829,8 +2829,15 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				return $label . (($checkRequired) ? $this->isRequiredField($fieldName) : '');
 			}
 
+			//Label aus der Flexform holen
+			$label = $this->getFlexformLabelByFieldName($fieldName);
+			if ($label) {
+				return $label;
+			}
+
 			// LanguageString ermitteln.
 			$languageString = $this->feUsersTca['columns'][$fieldName]['label'];
+
 		} else {
 			$languageString = $fieldName;
 		}
@@ -2853,6 +2860,19 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		// Wenn gar nichts gefunden wurde den uebergebenen Wert wieder zurueckliefern.
 		return $fieldName . (($checkRequired) ? $this->isRequiredField($fieldName) : '');
+	}
+
+	/**
+	 * @param string $fieldName
+	 * @return mixed|string
+	 */
+	public function getFlexformLabelByFieldName(string $fieldName) {
+		foreach($this->conf['databasefields'] as $databaseField) {
+			if ($databaseField['field'] === $fieldName) {
+				return $databaseField['label'];
+			}
+		}
+		return '';
 	}
 
 	/**
