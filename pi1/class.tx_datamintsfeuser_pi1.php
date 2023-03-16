@@ -2030,8 +2030,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				// Form Item Anfang.
 				$content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName, $fieldConfig['type'], $valueCheck) . '">';
 
-				// Label schreiben.
-				$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . '</label>';
+
+				if ($fieldConfig['type'] !== 'check') {
+					// Label schreiben.
+					$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . '</label>';
+				}
 
 				switch ($fieldConfig['type']) {
 
@@ -2378,8 +2381,13 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		} else {
 			$checked = ($arrCurrentData[$fieldName]) ? ' checked="checked"' : '';
 
+			$content .= '<label class="label label--checkbox" for="' . $this->getFieldId($fieldName) . '">';
 			$content .= '<input type="hidden" name="' . $this->getFieldName($fieldName) . '" value="0" />';
-			$content .= '<input type="checkbox" name="' . $this->getFieldName($fieldName) . '" value="1"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName) . '" />';
+			$content .= '<input class="input input--checkbox" type="checkbox" name="' . $this->getFieldName($fieldName) . '" value="1"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName) . '" />';
+			$content .= '<span class="label__checkmark"></span>';
+			$content .= $this->getLabel($fieldName) . '</label>';
+
+
 		}
 
 		return $content;
