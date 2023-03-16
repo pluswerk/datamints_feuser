@@ -447,7 +447,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				$captchaCheck = $this->checkCaptcha($value);
 
 				if ($captchaCheck) {
-						$valueCheck[$fieldName] = $captchaCheck;
+					$valueCheck[$fieldName] = $captchaCheck;
 				}
 			}
 
