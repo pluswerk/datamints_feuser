@@ -670,16 +670,16 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		switch ($this->conf['captcha.']['use']) {
 
-				case 'powermail':
-						$calculatingCaptchaService = GeneralUtility::makeInstance(\In2code\Powermail\Domain\Service\CalculatingCaptchaService::class);
+			case 'powermail':
+				$calculatingCaptchaService = GeneralUtility::makeInstance(\In2code\Powermail\Domain\Service\CalculatingCaptchaService::class);
 
-						$field = new Field();
-						$field->_setProperty('uid', $this->contentId);
-						if (!$calculatingCaptchaService->validCode($value, $field)) {
-								return self::validationerrorKeyValid;
-						}
+				$field = new Field();
+				$field->_setProperty('uid', $this->contentId);
+				if (!$calculatingCaptchaService->validCode($value, $field)) {
+					return self::validationerrorKeyValid;
+				}
 
-						break;
+				break;
 
 			case 'captcha':
 				session_start();
@@ -2665,30 +2665,30 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		switch ($this->conf['captcha.']['use']) {
 
 			case 'powermail':
-						$viewHelperInvoker = GeneralUtility::makeInstance(\TYPO3Fluid\Fluid\Core\ViewHelper\ViewHelperInvoker::class);
-						$renderingContext = GeneralUtility::makeInstance(\TYPO3\CMS\Fluid\Core\Rendering\RenderingContext::class);
+				$viewHelperInvoker = GeneralUtility::makeInstance(\TYPO3Fluid\Fluid\Core\ViewHelper\ViewHelperInvoker::class);
+				$renderingContext = GeneralUtility::makeInstance(\TYPO3\CMS\Fluid\Core\Rendering\RenderingContext::class);
 
-						$field = new Field();
-						$field->_setProperty('uid', $this->contentId);
+				$field = new Field();
+				$field->_setProperty('uid', $this->contentId);
 
-						$result = $viewHelperInvoker->invoke(
-								\In2code\Powermail\ViewHelpers\Validation\CaptchaViewHelper::class,
-								[
-										'field' => $field,
-										'class' => $this->conf['captcha.']['class'] ?: '',
-								],
-								$renderingContext,
-						);
-						$captcha = $result;
-						if ($this->conf['captcha.']['reload_class']) {
-								$captcha .= '<span class="' . $this->conf['captcha.']['reload_class'] . '">';
-								if ($this->conf['captcha.']['reload_icon_path']) {
-										$captcha .= '<img src="' . $this->conf['captcha.']['reload_icon_path'] . '"/>';
-								}
-								$captcha .= '</span>';
-						}
+				$result = $viewHelperInvoker->invoke(
+					\In2code\Powermail\ViewHelpers\Validation\CaptchaViewHelper::class,
+					[
+						'field' => $field,
+						'class' => $this->conf['captcha.']['class'] ?: '',
+					],
+					$renderingContext,
+				);
+				$captcha = $result;
+				if ($this->conf['captcha.']['reload_class']) {
+					$captcha .= '<span class="' . $this->conf['captcha.']['reload_class'] . '">';
+					if ($this->conf['captcha.']['reload_icon_path']) {
+						$captcha .= '<img src="' . $this->conf['captcha.']['reload_icon_path'] . '"/>';
+					}
+					$captcha .= '</span>';
+				}
 
- 						break;
+				break;
 
 			case 'captcha':
 				$captcha = '<img src="' . tx_datamintsfeuser_utils::getTypoLinkUrl(PathUtility::stripPathSitePrefix(ExtensionManagementUtility::extPath($this->conf['captcha.']['use'])) . 'captcha/captcha.php') . '" alt="Captcha" />';
@@ -2734,7 +2734,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName, '', $valueCheck) . '">';
 		$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . '</label>';
 		if ($this->getLabel('captcha_info')) {
-				$content .= '<div class="captchaInfo"> ' . $this->getLabel('captcha_info') . '</div>';
+			$content .= '<div class="captchaInfo"> ' . $this->getLabel('captcha_info') . '</div>';
 		}
 		$content .= '<div class="captcha">' . $captcha . '</div>';
 		$content .= '<input type="text" required="required" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />';
