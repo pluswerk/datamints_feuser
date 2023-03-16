@@ -23,6 +23,7 @@
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
 
+use In2code\Powermail\Domain\Model\Field;
 use TYPO3\CMS\Core\Utility\PathUtility;
 use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -113,7 +114,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$this->frontendController = $this->frontendController ?: $GLOBALS['TSFE'];
 		$this->templateService = $this->templateService ?: $this->cObj;
 
-		$this->pageRepository = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\Page\\PageRepository');
+		if (defined('TYPO3_branch') && (int)TYPO3_branch % 11 === 0) {
+			$this->pageRepository = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Domain\Repository\PageRepository::class);
+		} else {
+			$this->pageRepository = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\Page\\PageRepository');
+		}
 
 		// Debug.
 //		$this->frontendController->set_no_cache();
@@ -664,6 +669,17 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		}
 
 		switch ($this->conf['captcha.']['use']) {
+
+			case 'powermail':
+				$calculatingCaptchaService = GeneralUtility::makeInstance(\In2code\Powermail\Domain\Service\CalculatingCaptchaService::class);
+
+				$field = new Field();
+				$field->_setProperty('uid', $this->contentId);
+				if (!$calculatingCaptchaService->validCode($value, $field)) {
+					return self::validationerrorKeyValid;
+				}
+
+				break;
 
 			case 'captcha':
 				session_start();
@@ -1675,11 +1691,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			$mail->setFrom(array($fromEmail => $fromName));
 			$mail->setReplyTo(array($replytoEmail => $replytoName));
 			$mail->setTo(array($toEmail => $toName));
-			$mail->setBody($bodyPlain);
-			$mail->setCharset($this->frontendController->metaCharset);
+			$mail->html($bodyPlain);
 
 			if ($config['mailtype'] == 'html') {
-				$mail->addPart($bodyHtml, 'text/html', $this->frontendController->metaCharset);
+				$mail->html($bodyHtml);
+				$mail->text($bodyPlain);
 			}
 
 			$mail->send();
@@ -1990,7 +2006,8 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$iInfoItem = 1;
 
 		// Formular start.
-		$content = '<form name="' . $this->prefixId . '[' . $this->contentId . ']" action="' . $requestLink . '" method="post" enctype="multipart/form-data" id="' . $this->getFieldId('form') . '">';
+		$formClassName = $this->conf['form.']['class'] ?: '';
+		$content = '<form name="' . $this->prefixId . '[' . $this->contentId . ']" action="' . $requestLink . '" method="post" enctype="multipart/form-data" id="' . $this->getFieldId('form') . '" class="' . $formClassName . '">';
 		$content .= '<fieldset class="group-' . $iFieldset . '">';
 
 		// Wenn eine Lgende fuer das erste Fieldset definiert wurde, diese ausgeben.
@@ -2013,8 +2030,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				// Form Item Anfang.
 				$content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName, $fieldConfig['type'], $valueCheck) . '">';
 
-				// Label schreiben.
-				$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . '</label>';
+
+				if ($fieldConfig['type'] !== 'check') {
+					// Label schreiben.
+					$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . '</label>';
+				}
 
 				switch ($fieldConfig['type']) {
 
@@ -2361,8 +2381,13 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		} else {
 			$checked = ($arrCurrentData[$fieldName]) ? ' checked="checked"' : '';
 
+			$content .= '<label class="label label--checkbox" for="' . $this->getFieldId($fieldName) . '">';
 			$content .= '<input type="hidden" name="' . $this->getFieldName($fieldName) . '" value="0" />';
-			$content .= '<input type="checkbox" name="' . $this->getFieldName($fieldName) . '" value="1"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName) . '" />';
+			$content .= '<input class="input input--checkbox" type="checkbox" name="' . $this->getFieldName($fieldName) . '" value="1"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName) . '" />';
+			$content .= '<span class="label__checkmark"></span>';
+			$content .= $this->getLabel($fieldName) . '</label>';
+
+
 		}
 
 		return $content;
@@ -2647,6 +2672,32 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		switch ($this->conf['captcha.']['use']) {
 
+			case 'powermail':
+				$viewHelperInvoker = GeneralUtility::makeInstance(\TYPO3Fluid\Fluid\Core\ViewHelper\ViewHelperInvoker::class);
+				$renderingContext = GeneralUtility::makeInstance(\TYPO3\CMS\Fluid\Core\Rendering\RenderingContext::class);
+
+				$field = new Field();
+				$field->_setProperty('uid', $this->contentId);
+
+				$result = $viewHelperInvoker->invoke(
+					\In2code\Powermail\ViewHelpers\Validation\CaptchaViewHelper::class,
+					[
+						'field' => $field,
+						'class' => $this->conf['captcha.']['class'] ?: '',
+					],
+					$renderingContext,
+				);
+				$captcha = $result;
+				if ($this->conf['captcha.']['reload_class']) {
+					$captcha .= '<span class="' . $this->conf['captcha.']['reload_class'] . '">';
+					if ($this->conf['captcha.']['reload_icon_path']) {
+						$captcha .= '<img src="' . $this->conf['captcha.']['reload_icon_path'] . '"/>';
+					}
+					$captcha .= '</span>';
+				}
+
+				break;
+
 			case 'captcha':
 				$captcha = '<img src="' . tx_datamintsfeuser_utils::getTypoLinkUrl(PathUtility::stripPathSitePrefix(ExtensionManagementUtility::extPath($this->conf['captcha.']['use'])) . 'captcha/captcha.php') . '" alt="Captcha" />';
 
@@ -2690,8 +2741,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		$content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName, '', $valueCheck) . '">';
 		$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . '</label>';
+		if ($this->getLabel('captcha_info')) {
+			$content .= '<div class="captchaInfo"> ' . $this->getLabel('captcha_info') . '</div>';
+		}
 		$content .= '<div class="captcha">' . $captcha . '</div>';
-		$content .= '<input type="text" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />';
+		$content .= '<input type="text" required="required" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />';
 //		$content .= ($showInput) ? '<input type="text" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />' : '';
 		$content .= $this->getErrorLabel($fieldName, $valueCheck);
 		$content .= '</div>';
@@ -2783,8 +2837,15 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				return $label . (($checkRequired) ? $this->isRequiredField($fieldName) : '');
 			}
 
+			//Label aus der Flexform holen
+			$label = $this->getFlexformLabelByFieldName($fieldName);
+			if ($label) {
+				return $label;
+			}
+
 			// LanguageString ermitteln.
 			$languageString = $this->feUsersTca['columns'][$fieldName]['label'];
+
 		} else {
 			$languageString = $fieldName;
 		}
@@ -2807,6 +2868,19 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		// Wenn gar nichts gefunden wurde den uebergebenen Wert wieder zurueckliefern.
 		return $fieldName . (($checkRequired) ? $this->isRequiredField($fieldName) : '');
+	}
+
+	/**
+	 * @param string $fieldName
+	 * @return mixed|string
+	 */
+	public function getFlexformLabelByFieldName(string $fieldName) {
+		foreach($this->conf['databasefields'] as $databaseField) {
+			if ($databaseField['field'] === $fieldName) {
+				return $databaseField['label'];
+			}
+		}
+		return '';
 	}
 
 	/**
@@ -3011,7 +3085,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$flexConf = array();
 
 		// Extension Konfiguration ermitteln.
-		$this->extConf = unserialize($GLOBALS['TYPO3_CONF_VARS']['EXT']['extConf'][$this->extKey]);
+		$this->extConf = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'][$this->extKey];
 
 		// Alle Tabs der Flexformkonfiguration durchgehn.
 		if (is_array($this->cObj->data['pi_flexform']['data'])) {
