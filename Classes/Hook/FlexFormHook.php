@@ -24,51 +24,51 @@ namespace Datamints\Feuser\Hook;
  *
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
-
+use TYPO3\CMS\Core\Configuration\FlexForm\FlexFormTools;
+use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
  * Hook for removing deprecated flexform fields.
  */
-class FlexFormHook {
-	const deprecatedFlexFormSheetFields = [
-		'sRED' => ['redirect.register', 'redirect.resendactivation', 'redirect.edit', 'redirect.userdelete']
-	];
+class FlexFormHook
+{
+    const deprecatedFlexFormSheetFields = [
+        'sRED' => ['redirect.register', 'redirect.resendactivation', 'redirect.edit', 'redirect.userdelete']
+    ];
 
-	/**
-	  * Checks if a flexform field is deprecated and removes it.
-	  *
-	  * @param string $status
-	  * @param string $table
-	  * @param string $id
-	  * @param array $fieldArray
-	  * @param \TYPO3\CMS\Core\DataHandling\DataHandler $reference
-	  *
-	  * @return void
-	  */
-	public function processDatamap_postProcessFieldArray($status, $table, $id, &$fieldArray, &$reference) {
-		if ($status !== 'update' || $table !== 'tt_content' || !$fieldArray['pi_flexform']) {
-			return;
-		}
+    /**
+     * Checks if a flexform field is deprecated and removes it.
+     *
+     * @param string $status
+     * @param string $table
+     * @param string $id
+     * @param DataHandler $reference
+     *
+     */
+    public function processDatamap_postProcessFieldArray($status, $table, $id, array &$fieldArray, &$reference): void
+    {
+        if ($status !== 'update' || $table !== 'tt_content' || !$fieldArray['pi_flexform']) {
+            return;
+        }
 
-		$flexFormData = GeneralUtility::xml2array($fieldArray['pi_flexform']);
+        $flexFormData = GeneralUtility::xml2array($fieldArray['pi_flexform']);
 
-		foreach (self::deprecatedFlexFormSheetFields as $sheet => $fields) {
-			foreach($fields as $field) {
-				if (isset($flexFormData['data'][$sheet]['lDEF'][$field]['vDEF'])) {
-					unset($flexFormData['data'][$sheet]['lDEF'][$field]);
-				}
-			}
+        foreach (self::deprecatedFlexFormSheetFields as $sheet => $fields) {
+            foreach ($fields as $field) {
+                if (isset($flexFormData['data'][$sheet]['lDEF'][$field]['vDEF'])) {
+                    unset($flexFormData['data'][$sheet]['lDEF'][$field]);
+                }
+            }
 
-			// If remaining sheet does not contain fields, then remove the sheet.
-			if (empty($flexFormData['data'][$sheet]['lDEF'])) {
-				unset($flexFormData['data'][$sheet]);
-			}
-		}
+            // If remaining sheet does not contain fields, then remove the sheet.
+            if (empty($flexFormData['data'][$sheet]['lDEF'])) {
+                unset($flexFormData['data'][$sheet]);
+            }
+        }
 
-		$flexFormTools = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\Configuration\\FlexForm\\FlexFormTools');
+        $flexFormTools = GeneralUtility::makeInstance(FlexFormTools::class);
 
-		$fieldArray['pi_flexform'] = $flexFormTools->flexArray2Xml($flexFormData, TRUE);
-	}
-
+        $fieldArray['pi_flexform'] = $flexFormTools->flexArray2Xml($flexFormData, true);
+    }
 }

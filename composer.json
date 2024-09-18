@@ -1,55 +1,74 @@
 {
-    "name": "datamints/feuser",
-    "type": "typo3-cms-extension",
-    "description": "User registration and edit plugin, fully configurable, custom validators, autologin, double-opt-in, admin approval, IRRE configuration, resend activation mail, redirect features, support for saltedpasswords, support for salesforce. More to come!",
-    "keywords": [
-        "feuser",
-        "registration",
-        "edit",
-        "validators",
-        "autologin",
-        "double-opt-in",
-        "admin-approval",
-        "md5",
-        "salted",
-        "salesforce"
-    ],
-    "homepage": "https://extensions.typo3.org/extension/datamints_feuser/",
-    "authors": [
-        {
-            "name": "Bernhard Baumgartl, datamints GmbH",
-            "email": "b.baumgartl@datamints.com",
-            "role": "Developer",
-            "homepage": "https://www.datamints.com/"
-        }
-    ],
-    "license": "GPL-2.0-or-later",
-    "support": {
-        "issues": "http://forge.typo3.org/projects/extension-datamints_feuser"
+  "name": "datamints/feuser",
+  "description": "User registration and edit plugin, fully configurable, custom validators, autologin, double-opt-in, admin approval, IRRE configuration, resend activation mail, redirect features, support for saltedpasswords, support for salesforce. More to come!",
+  "license": "GPL-2.0-or-later",
+  "type": "typo3-cms-extension",
+  "keywords": [
+    "feuser",
+    "registration",
+    "edit",
+    "validators",
+    "autologin",
+    "double-opt-in",
+    "admin-approval",
+    "md5",
+    "salted",
+    "salesforce"
+  ],
+  "authors": [
+    {
+      "name": "Bernhard Baumgartl, datamints GmbH",
+      "email": "b.baumgartl@datamints.com",
+      "homepage": "https://www.datamints.com/",
+      "role": "Developer"
+    }
+  ],
+  "homepage": "https://extensions.typo3.org/extension/datamints_feuser/",
+  "support": {
+    "issues": "http://forge.typo3.org/projects/extension-datamints_feuser"
+  },
+  "require": {
+    "php": ">=8.1.0 <=8.3.99",
+    "typo3/cms-core": "^v11.5.39 || ^12.4",
+		"typo3/cms-frontend": "^12.4.19",
+		"typo3/cms-fluid": "^12.4.19",
+		"friendsoftypo3/typo3db-legacy": ">=1.2"
+  },
+  "require-dev": {
+    "phpstan/phpstan": ">=1.12",
+    "pluswerk/grumphp-config": ">=7.1",
+    "saschaegerer/phpstan-typo3": ">=1.10.2",
+    "ssch/typo3-rector": ">=2.6.5",
+    "in2code/powermail": ">=12.4"
+  },
+  "replace": {
+    "typo3-ter/datamints-feuser": "*"
+  },
+  "suggest": {
+    "typo3db_legacy": ">=1.0.0,<=1.0.99"
+  },
+  "autoload": {
+    "psr-4": {
+      "Datamints\\Feuser\\": "Classes"
     },
-    "require": {
-        "php": ">=5.3.7,<=8.3.99",
-        "typo3/cms-core": ">=6.2.0,<=11.99.990"
-    },
-    "suggest": {
-        "typo3db_legacy": ">=1.0.0,<=1.0.99"
-    },
-    "autoload": {
-        "psr-4": {
-          "Datamints\\Feuser\\": "Classes"
-        },
-        "classmap": [
-            "lib",
-            "pi1"
-        ]
-    },
+    "classmap": [
+      "lib",
+      "pi1"
+    ]
+  },
+  "config": {
+    "allow-plugins": {
+      "ergebnis/composer-normalize": true,
+      "phpro/grumphp": true,
+      "phpstan/extension-installer": true,
+      "pluswerk/grumphp-config": true,
+      "typo3/class-alias-loader": true,
+      "typo3/cms-composer-installers": true
+    }
+  },
   "extra": {
     "typo3/cms": {
       "extension-key": "datamints_feuser"
     }
-  },
-    "replace": {
-        "datamints_feuser": "self.version",
-        "typo3-ter/datamints-feuser": "self.version"
-    }
+  }
 }

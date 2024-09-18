@@ -14,10 +14,8 @@ window.onload = function() {
 		addEvent(form, 'submit', formCheck);
 
 		var input;
-
 		for (var i = 0; i < datamints_feuser_inputids[datamints_feuser_formId].length; i++) {
 			input = document.getElementById(datamints_feuser_inputids[datamints_feuser_formId][i]);
-
 			// Wenn Input Typ eine Checkbox ist ein Klickevent setzten, da der IE bei onchange das Event erst nach verlieren des Focus ausloest.
 			if (input.type == 'checkbox') {
 				addEvent(input, 'click', inputItemCheck);

@@ -1,15 +1,22 @@
 <?php
 
-if (!defined('TYPO3_MODE')) {
-	die('Access denied.');
+use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
+use Psr\Http\Message\ServerRequestInterface;
+use TYPO3\CMS\Core\Http\ApplicationType;
+
+if (!defined('TYPO3')) {
+    die('Access denied.');
 }
 
 $extensionName = 'datamints_feuser';
-if (TYPO3_MODE == 'BE') {
-	$TBE_MODULES_EXT['xMOD_db_new_content_el']['addElClasses']['tx_datamintsfeuser_pi1_wizicon'] = \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::extPath($extensionName) . 'pi1/class.tx_datamintsfeuser_pi1_wizicon.php';
+if (
+    ($GLOBALS['TYPO3_REQUEST'] ?? null) instanceof ServerRequestInterface
+    && ApplicationType::fromRequest($GLOBALS['TYPO3_REQUEST'])->isBackend()
+) {
+    $TBE_MODULES_EXT['xMOD_db_new_content_el']['addElClasses']['tx_datamintsfeuser_pi1_wizicon'] = ExtensionManagementUtility::extPath($extensionName) . 'pi1/class.tx_datamintsfeuser_pi1_wizicon.php';
 }
 
-\TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addPlugin(array('LLL:EXT:' . $extensionName . '/locallang_db.xml:tt_content.list_type_pi1', $extensionName . '_pi1', \TYPO3\CMS\Core\Utility\ExtensionManagementUtility::extPath($extensionName) . 'ext_icon.gif'), 'list_type', $extensionName);
+ExtensionManagementUtility::addPlugin(['LLL:EXT:' . $extensionName . '/locallang_db.xml:tt_content.list_type_pi1', $extensionName . '_pi1', ExtensionManagementUtility::extPath($extensionName) . 'ext_icon.gif'], 'list_type', $extensionName);
 
 // Flexform anzeigen und die Felder layout, select_key, pages und recursive ausblenden.
 $GLOBALS['TCA']['tt_content']['types']['list']['subtypes_addlist'][$extensionName . '_pi1'] = 'pi_flexform';
@@ -19,10 +26,10 @@ $GLOBALS['TCA']['tt_content']['types']['list']['subtypes_excludelist'][$extensio
 $confArray = unserialize($GLOBALS['TYPO3_CONF_VARS']['EXT']['extConf'][$extensionName]);
 
 // Flexformfunktionen einbinden.
-include_once(\TYPO3\CMS\Core\Utility\ExtensionManagementUtility::extPath($extensionName) . 'lib/class.tx_datamintsfeuser_flexform.php');
+include_once(ExtensionManagementUtility::extPath($extensionName) . 'lib/class.tx_datamintsfeuser_flexform.php');
 
 if ($confArray['enableIrre']) {
-	\TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addPiFlexFormValue($extensionName . '_pi1', 'FILE:EXT:' . $extensionName . '/flexform/data_pi1_irre.xml');
+    ExtensionManagementUtility::addPiFlexFormValue($extensionName . '_pi1', 'FILE:EXT:' . $extensionName . '/flexform/data_pi1_irre.xml');
 } else {
-	\TYPO3\CMS\Core\Utility\ExtensionManagementUtility::addPiFlexFormValue($extensionName . '_pi1', 'FILE:EXT:' . $extensionName . '/flexform/data_pi1.xml');
+    ExtensionManagementUtility::addPiFlexFormValue($extensionName . '_pi1', 'FILE:EXT:' . $extensionName . '/flexform/data_pi1.xml');
 }

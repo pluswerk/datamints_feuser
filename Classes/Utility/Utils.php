@@ -1,5 +1,9 @@
 <?php
 
+declare(strict_types=1);
+
+namespace Datamints\Feuser\Utility;
+
 /***************************************************************
  *  Copyright notice
  *
@@ -22,34 +26,33 @@
  *
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
-
+use TYPO3\CMS\Core\Crypto\PasswordHashing\PasswordHashFactory;
+use TYPO3\CMS\Core\Resource\ResourceFactory;
+use TYPO3\CMS\Core\LinkHandling\LinkService;
+use TYPO3\CMS\Core\Resource\File;
+use TYPO3\CMS\Core\Service\MarkerBasedTemplateService;
+use TYPO3\CMS\Core\SingletonInterface;
 use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
-use TYPO3\CMS\Saltedpasswords\Utility\SaltedPasswordsUtility;
+use TYPO3\CMS\Frontend\ContentObject\ContentObjectRenderer;
 
-/**
- * Library 'Utils' for the 'datamints_feuser' extension.
- *
- * @author	Bernhard Baumgartl <b.baumgartl@datamints.com>
- * @package	TYPO3
- * @subpackage	tx_datamintsfeuser
- */
-class tx_datamintsfeuser_utils {
-
+class Utils implements SingletonInterface
+{
 	/**
 	 * Ueberschreibt eventuell vorhandene TCA Konfiguration mit TypoScript Konfiguration.
 	 *
-	 * @param	array		$feUsersTca
-	 * @return	array		$globalFeUsersTca
+	 * @param array $feUsersTca
+	 * @return  array       $globalFeUsersTca
 	 */
-	public static function getFeUsersTca($feUsersTca) {
+	public function getFeUsersTca($feUsersTca)
+	{
 		$globalFeUsersTca = $GLOBALS['TCA']['fe_users'];
 
 		if ($feUsersTca) {
 			$columns = (array)$globalFeUsersTca['columns'];
 
-			ArrayUtility::mergeRecursiveWithOverrule($columns, (array)GeneralUtility::removeDotsFromTS($feUsersTca));
+			ArrayUtility::mergeRecursiveWithOverrule($columns, GeneralUtility::removeDotsFromTS($feUsersTca));
 
 			$globalFeUsersTca['columns'] = $columns;
 		}
@@ -60,10 +63,11 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Ermittelt das Language Field einer Tabelle.
 	 *
-	 * @param	string		$table
-	 * @return	string
+	 * @param string $table
+	 * @return  string
 	 */
-	public static function getLanguageFieldName($table) {
+	public function getLanguageFieldName($table)
+	{
 		if (array_key_exists($table, $GLOBALS['TCA']) && array_key_exists('languageField', $GLOBALS['TCA'][$table]['ctrl'])) {
 			return $GLOBALS['TCA'][$table]['ctrl']['languageField'];
 		}
@@ -74,10 +78,11 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Ermittelt die General Record Storage Pid, falls keine Pid uebergeben wurde.
 	 *
-	 * @param	integer		$storagePageId
-	 * @return	integer		$storagePid
+	 * @param integer $storagePageId
+	 * @return  integer     $storagePid
 	 */
-	public static function getStoragePageId($storagePageId) {
+	public function getStoragePageId($storagePageId): int
+	{
 		if ($storagePageId) {
 			return intval($storagePageId);
 		}
@@ -96,26 +101,28 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Ermittelt die Url zu einer Seite oder einer Datei.
 	 *
-	 * @param	string		$params
-	 * @param	array		$urlParameters
-	 * @return	string		$pageLink
+	 * @param string $params
+	 * @param array $urlParameters
+	 * @return  string      $pageLink
 	 */
-	public static function getTypoLinkUrl($params, $urlParameters = array()) {
+	public function getTypoLinkUrl($params, $urlParameters = [])
+	{
 		$cObj = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\ContentObject\\ContentObjectRenderer');
-		$pageLink = $cObj->getTypoLink_URL($params, $urlParameters);
 
-		return $pageLink;
+		return $cObj->getTypoLink_URL($params, $urlParameters);
 	}
 
 	/**
 	 * Fuehrt einen stdWrap mit den aktuellen Benutzerdaten aus.
 	 *
-	 * @param	string		$content
-	 * @param	array		$stdWrap
-	 * @return	string		$content
+	 * @param string $content
+	 * @param array $stdWrap
+	 * @return  string      $content
 	 */
-	public static function currentUserWrap($content, $stdWrap) {
-		$cObj = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\ContentObject\\ContentObjectRenderer');
+	public function currentUserWrap($content, $stdWrap)
+	{
+		$cObj = GeneralUtility::makeInstance(ContentObjectRenderer::class);
+		assert($cObj instanceof ContentObjectRenderer);
 		$cObj->data = $GLOBALS['TSFE']->fe_user->user;
 
 		return $cObj->stdWrap($content, $stdWrap);
@@ -125,10 +132,10 @@ class tx_datamintsfeuser_utils {
 	 * Wird verwendet, um doppelte Schraegstriche zu vermeiden.
 	 * Der Pfad wird mit einem abschliessenden Schraegstrich zurueckgegeben.
 	 *
-	 * @param	string		$path
-	 * @return	string		$path
+	 * @return  string      $path
 	 */
-	public static function fixPath($path) {
+	public function fixPath(string $path): string
+	{
 		return dirname($path . '/.') . '/';
 	}
 
@@ -136,16 +143,16 @@ class tx_datamintsfeuser_utils {
 	 * Konvertiert alle Werte des uebergebenen Post Arrays um z.B. XSS zu verhindern.
 	 * Der Modus gibt an ob die Werte encodiert oder decodiert werden soll.
 	 *
-	 * @param	array		$arrPost // Call by reference: Das Post Array dessen Werte konvertiert werden.
-	 * @param	boolean		$decode
-	 * @return	boolean
+	 * @param array $arrPost // Call by reference: Das Post Array dessen Werte konvertiert werden.
+	 * @param boolean $decode
 	 */
-	public static function htmlspecialcharsPostArray(&$arrPost, $decode) {
+	public function htmlspecialcharsPostArray(&$arrPost, $decode): bool
+	{
 		if ($decode) {
 			// Konvertiert alle moeglichen Zeichen die fuer die Ausgabe angepasst wurden zurueck.
 			foreach ($arrPost as $key => $val) {
 				if (!is_array($arrPost[$key])) {
-					$arrPost[$key] = htmlspecialchars_decode($val);
+					$arrPost[$key] = htmlspecialchars_decode((string)$val);
 				}
 			}
 		} else {
@@ -153,7 +160,7 @@ class tx_datamintsfeuser_utils {
 			foreach ($arrPost as $key => $val) {
 				// Falls es kein Array ist, darf auch HTML enthalten sein, deshalb nur htmlspecialchars() anwenden!
 				if (!is_array($arrPost[$key])) {
-					$arrPost[$key] = htmlspecialchars($val);
+					$arrPost[$key] = htmlspecialchars((string)$val);
 				} else {
 					// Wenn es ein Array ist, dann auf alle Elemente strip_tags() anwenden!
 					array_walk_recursive($arrPost[$key], 'tx_datamintsfeuser_utils::stripTagsCallback');
@@ -161,18 +168,18 @@ class tx_datamintsfeuser_utils {
 			}
 		}
 
-		return TRUE;
+		return true;
 	}
 
 	/**
 	 * Es wird jeder Wert im Post Array ueberprueft ob er ein Array ist.
 	 * Wenn dass der Fall ist, wird der erste Wert in diesem Array entfernt, falls dieser ein Leerstring ist.
 	 *
-	 * @param	array		$arrPost // Call by reference: Das Post Array
-	 * @return	boolean
+	 * @param array $arrPost // Call by reference: Das Post Array
 	 */
-	public static function shiftEmptyArrayValuePostArray(&$arrPost) {
-		foreach($arrPost as $key => $value) {
+	public function shiftEmptyArrayValuePostArray(array &$arrPost): bool
+	{
+		foreach ($arrPost as $key => $value) {
 			if (is_array($value) && $value[0] === '') {
 				unset($value[0]);
 
@@ -180,18 +187,18 @@ class tx_datamintsfeuser_utils {
 			}
 		}
 
-		return TRUE;
+		return true;
 	}
 
 	/**
 	 * Erstellt wenn gefordert ein Password, und verschluesselt dieses, oder das uebergebene, wenn es verschluesselt werden soll.
 	 *
-	 * @param	string		$password
-	 * @param	array		$arrGenerate
-	 * @return	array		$arrPassword
+	 * @param string $password
+	 * @return  array       $arrPassword
 	 */
-	public static function generatePassword($password, $arrGenerate = array()) {
-		$arrPassword = array();
+	public function generatePassword($password, array $arrGenerate = []): array
+	{
+		$arrPassword = [];
 
 		// Uebergebenes Password setzten.
 		// Hier wird kein strip_tags() o.Ae. benoetigt, da beim schreiben in die Datenbank immer "$GLOBALS['TYPO3_DB']->fullQuoteStr()" ausgefuehrt wird!
@@ -203,7 +210,7 @@ class tx_datamintsfeuser_utils {
 
 			$arrPassword['normal'] = '';
 
-			for ($i = 0; $i < (($arrGenerate['length']) ? $arrGenerate['length'] : 8); $i++) {
+			for ($i = 0; $i < ($arrGenerate['length'] ?: 8); $i++) {
 				$arrPassword['normal'] .= $chars[mt_rand(0, strlen($chars))];
 			}
 		}
@@ -211,19 +218,19 @@ class tx_datamintsfeuser_utils {
 		// Unverschluesseltes Passwort uebertragen.
 		$arrPassword['encrypted'] = $arrPassword['normal'];
 
-		// Wenn "saltedpasswords" installiert ist wird deren Konfiguration geholt, und je nach Einstellung das Password verschluesselt.
-		if (ExtensionManagementUtility::isLoaded('saltedpasswords') && $GLOBALS['TYPO3_CONF_VARS']['FE']['loginSecurityLevel']) {
-			$saltedpasswords = SaltedPasswordsUtility::returnExtConf();
-
-			if ($saltedpasswords['enabled']) {
-				$tx_saltedpasswords = GeneralUtility::makeInstance($saltedpasswords['saltedPWHashingMethod']);
-
-				$arrPassword['encrypted'] = $tx_saltedpasswords->getHashedPassword($arrPassword['normal']);
-			}
-		}
+		//// Wenn "saltedpasswords" installiert ist wird deren Konfiguration geholt, und je nach Einstellung das Password verschluesselt.
+		//if (ExtensionManagementUtility::isLoaded('saltedpasswords') && $GLOBALS['TYPO3_CONF_VARS']['FE']['loginSecurityLevel']) {
+		//	$saltedpasswords = SaltedPasswordsUtility\::returnExtConf();
+//
+		//	if ($saltedpasswords['enabled']) {
+		//		$tx_saltedpasswords = GeneralUtility::makeInstance($saltedpasswords['saltedPWHashingMethod']);
+//
+		//		$arrPassword['encrypted'] = $tx_saltedpasswords->getHashedPassword($arrPassword['normal']);
+		//	}
+		//}
 
 		if ($GLOBALS['TYPO3_CONF_VARS']['FE']['passwordHashing']['className']) {
-			$arrPassword['encrypted'] = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\Crypto\\PasswordHashing\\PasswordHashFactory')->getDefaultHashInstance('FE')->getHashedPassword($arrPassword['normal']);
+			$arrPassword['encrypted'] = GeneralUtility::makeInstance(PasswordHashFactory::class)->getDefaultHashInstance('FE')->getHashedPassword($arrPassword['normal']);
 		}
 
 		return $arrPassword;
@@ -232,12 +239,11 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Ueberprueft anhand der aktuellen Verschluesselungsextension, ob das uebergebene unverschluesselte Passwort mit dem uebergebenen verschluesselten Passwort uebereinstimmt.
 	 *
-	 * @param	string		$submittedPassword
-	 * @param	string		$originalPassword
-	 * @return	boolean		$check
+	 * @return  boolean     $check
 	 */
-	public static function checkPassword($submittedPassword, $originalPassword) {
-		$check = FALSE;
+	public function checkPassword(string $submittedPassword, string $originalPassword)
+	{
+		$check = false;
 
 		// Wenn "saltedpasswords" installiert ist wird deren Konfiguration geholt, und je nach Einstellung das Password ueberprueft.
 		if (ExtensionManagementUtility::isLoaded('saltedpasswords') && $GLOBALS['TYPO3_CONF_VARS']['FE']['loginSecurityLevel']) {
@@ -251,7 +257,7 @@ class tx_datamintsfeuser_utils {
 		}
 
 		if ($GLOBALS['TYPO3_CONF_VARS']['FE']['passwordHashing']['className']) {
-			$check = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\Crypto\\PasswordHashing\\PasswordHashFactory')->get($originalPassword, 'FE')->checkPassword($submittedPassword, $originalPassword);
+			return GeneralUtility::makeInstance(PasswordHashFactory::class)->get($originalPassword, 'FE')->checkPassword($submittedPassword, $originalPassword);
 		}
 
 		return $check;
@@ -260,12 +266,12 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Vollzieht einen Login ohne ein Passwort.
 	 *
-	 * @param	integer		$userId
-	 * @param	integer		$pageId
-	 * @param	array		$urlParameters
-	 * @return	void
+	 * @param integer $userId
+	 * @param integer $pageId
+	 * @param array $urlParameters
 	 */
-	public static function userAutoLogin($userId, $pageId = 0, $urlParameters = array()) {
+	public function userAutoLogin($userId, $pageId = 0, $urlParameters = []): void
+	{
 		// Login vollziehen.
 		$GLOBALS['TSFE']->fe_user->checkPid = 0;
 
@@ -274,23 +280,23 @@ class tx_datamintsfeuser_utils {
 		$GLOBALS['TSFE']->fe_user->createUserSession($userRecord);
 
 		// Session erzwingen um einen FE Cookie zu bekommen (TYPO3 6.2.5+, see https://forge.typo3.org/issues/62194).
-		$setSessionCookieMethod = new \ReflectionMethod($GLOBALS['TSFE']->fe_user, 'setSessionCookie');
-		$setSessionCookieMethod->setAccessible(TRUE);
+		$setSessionCookieMethod = new ReflectionMethod($GLOBALS['TSFE']->fe_user, 'setSessionCookie');
+		$setSessionCookieMethod->setAccessible(true);
 		$setSessionCookieMethod->invoke($GLOBALS['TSFE']->fe_user);
 
 		// Umleiten, damit der Login wirksam wird.
-		self::userRedirect($pageId, $urlParameters, TRUE);
+		$this->userRedirect($pageId, $urlParameters, true);
 	}
 
 	/**
 	 * Vollzieht einen Redirect mit der Seite die benutzt wird, oder auf die aktuelle.
 	 *
-	 * @param	integer		$pageId
-	 * @param	array		$urlParameters
-	 * @param	boolean		$disableAccessCheck
-	 * @return	void
+	 * @param integer $pageId
+	 * @param array $urlParameters
+	 * @param boolean $disableAccessCheck
 	 */
-	public static function userRedirect($pageId = 0, $urlParameters = array(), $disableAccessCheck = FALSE) {
+	public function userRedirect($pageId = 0, $urlParameters = [], $disableAccessCheck = false): void
+	{
 		// Normalen Redirect, oder Redirect auf die gewuenschte Seite.
 		if (!$pageId) {
 			$pageId = $GLOBALS['TSFE']->id;
@@ -303,7 +309,7 @@ class tx_datamintsfeuser_utils {
 			$GLOBALS['TSFE']->config['config']['typolinkLinkAccessRestrictedPages'] = 'NONE';
 		}
 
-		$pageLink = self::getTypoLinkUrl($pageId, $urlParameters);
+		$pageLink = $this->getTypoLinkUrl($pageId, $urlParameters);
 
 		header('Location: ' . GeneralUtility::locationHeaderUrl($pageLink));
 		exit;
@@ -312,32 +318,31 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * URL encoded die eckigen Klammern in einem Link.
 	 *
-	 * @param	string		$url
-	 * @return	string
+	 * @param string $url
 	 */
-	public static function escapeBrackets($url) {
-		$replace = array('[' => '%5b', ']' => '%5d');
+	public function escapeBrackets($url): string
+	{
+		$replace = ['[' => '%5b', ']' => '%5d'];
 
 		return str_replace(array_keys($replace), array_values($replace), $url);
 	}
 
 	/**
 	 * Fuegt die '--' Zeichen vor und hinter dem eigendlichen Feldnamen, hinzu um den eindeutigen Key zu bekommen.
-	 *
-	 * @param	string		$fieldName
-	 * @return	string
 	 */
-	public static function getSpecialFieldKey($fieldName) {
+	public function getSpecialFieldKey(string $fieldName): string
+	{
 		return '--' . $fieldName . '--';
 	}
 
 	/**
 	 * Ersetzt die beim Eingeben angegebenen '--' Zeichen vor und hinter dem eigendlichen Feldnamen, falls vorhanden.
 	 *
-	 * @param	string		$fieldName
-	 * @return	string
+	 * @param string $fieldName
+	 * @return  string
 	 */
-	public static function getSpecialFieldName($fieldName) {
+	public function getSpecialFieldName($fieldName)
+	{
 		if (preg_match('/^--.*--$/', $fieldName)) {
 			return preg_replace('/^--(.*)--$/', '\1', $fieldName);
 		}
@@ -348,10 +353,11 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Convertiert eine HTML E-Mail zu einer Plain Text E-Mail.
 	 *
-	 * @param	string		$content
-	 * @return	string		$content
+	 * @param string $content
+	 * @return  string      $content
 	 */
-	public static function convertHtmlEmailToPlain($content) {
+	public function convertHtmlEmailToPlain($content): string|array|null
+	{
 		$newLine = chr(13) . chr(10);
 
 		// Den Head entfernen.
@@ -364,7 +370,7 @@ class tx_datamintsfeuser_utils {
 		$content = preg_replace('/>/i', '>' . $newLine, $content);
 
 		// HTML Sonderzeichen in Textzeichen umwandeln.
-		$content = html_entity_decode($content);
+		$content = html_entity_decode((string)$content);
 
 		// Alle HTML Tags entfernen und allgemein trimmen.
 		$content = trim(strip_tags($content));
@@ -387,32 +393,33 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Holt einen Subpart des Standardtemplates und ersetzt uebergeben Marker.
 	 *
-	 * @param	string		$templateFile
-	 * @param	string		$templatePart
-	 * @param	array		$markerArray
-	 * @return	string		$template
+	 * @param string $templateFile
+	 * @param string $templatePart
+	 * @param array $markerArray
+	 * @return  string      $template
 	 */
-	public static function getTemplateSubpart($templateFile, $templatePart, $markerArray = array()) {
+	public function getTemplateSubpart($templateFile, $templatePart, $markerArray = [])
+	{
 		// Template laden.
-      $resourceFactory = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Resource\ResourceFactory::class);
+		$resourceFactory = GeneralUtility::makeInstance(ResourceFactory::class);
 		$fileFolder = $resourceFactory->retrieveFileOrFolderObject($templateFile);
 
-		if (!$fileFolder && class_exists('TYPO3\\CMS\\Core\\LinkHandling\\LinkService')) {
-			$result = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\LinkHandling\\LinkService')->resolve($templateFile);
+		if (!$fileFolder && class_exists(LinkService::class)) {
+			$result = GeneralUtility::makeInstance(LinkService::class)->resolve($templateFile);
 
-			$fileFolder = isset($result['file']) ? $result['file'] : null;
+			$fileFolder = $result['file'] ?? null;
 		}
 
-		$template = ($fileFolder instanceof \TYPO3\CMS\Core\Resource\File) ? $fileFolder->getContents() : FALSE;
+		$template = ($fileFolder instanceof File) ? $fileFolder->getContents() : false;
 
-		$templateService = GeneralUtility::makeInstance(class_exists('TYPO3\\CMS\\Core\\Service\\MarkerBasedTemplateService') ? 'TYPO3\\CMS\\Core\\Service\\MarkerBasedTemplateService' : 'TYPO3\\CMS\\Frontend\\ContentObject\\ContentObjectRenderer');
+		$templateService = GeneralUtility::makeInstance(class_exists(MarkerBasedTemplateService::class) ? MarkerBasedTemplateService::class : 'TYPO3\\CMS\\Frontend\\ContentObject\\ContentObjectRenderer');
 		$template = $templateService->getSubpart($template, '###' . strtoupper($templatePart) . '###');
 
-//		if (!self::checkUtf8($template)) {
-//			$template = utf8_encode ($template);
-//		}
+		//      if (!$this->checkUtf8($template)) {
+		//          $template = utf8_encode ($template);
+		//      }
 
-		$template = $templateService->substituteMarkerArray($template, $markerArray, '###|###', TRUE);
+		$template = $templateService->substituteMarkerArray($template, $markerArray, '###|###', true);
 
 		return $template;
 	}
@@ -420,12 +427,13 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Parst das Flexform Konfigurations Array und schreibt alle Werte in $conf.
 	 *
-	 * @param	array		$flexData
-	 * @param	string		$sTab
-	 * @param	array		$conf
-	 * @return	array		$conf
+	 * @param array $flexData
+	 * @param string $sTab
+	 * @param array $conf
+	 * @return  array       $conf
 	 */
-	public static function getFlexformConfigurationFromTab($flexData, $sTab, $conf = array()) {
+	public function getFlexformConfigurationFromTab($flexData, $sTab, $conf = [])
+	{
 		if (isset($flexData['data'][$sTab]['lDEF'])) {
 			$flexData = $flexData['data'][$sTab]['lDEF'];
 		}
@@ -448,11 +456,11 @@ class tx_datamintsfeuser_utils {
 					if (isset($element['vDEF'])) {
 						$conf[$ekey] = $element['vDEF'];
 					} else {
-						$conf[$key][$ekey] = self::getFlexformConfigurationFromTab($element, $sTab, $conf[$key][$ekey]);
+						$conf[$key][$ekey] = $this->getFlexformConfigurationFromTab($element, $sTab, $conf[$key][$ekey]);
 					}
 				}
 			} else {
-				$conf = self::getFlexformConfigurationFromTab($value['el'], $sTab, $conf);
+				$conf = $this->getFlexformConfigurationFromTab($value['el'], $sTab, $conf);
 			}
 
 			if ($value['vDEF']) {
@@ -466,17 +474,16 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Ueberschreibt eventuell vorhandene TypoScript Konfigurationen mit den Konfigurationen aus der Flexform.
 	 *
-	 * @param	string		$key
-	 * @param	string		$value
-	 * @param	array		$conf
-	 * @return	array		$conf
+	 * @param string $key
+	 * @param string $value
+	 * @return  array       $conf
 	 */
-	public static function setFlexformConfigurationValue($key, $value, $conf) {
-		if (strpos($key, '.') !== FALSE && $value) {
-			$arrKey = GeneralUtility::trimExplode('.', $key, TRUE);
-
+	public function setFlexformConfigurationValue($key, $value, array $conf)
+	{
+		if (str_contains($key, '.') && $value) {
+			$arrKey = GeneralUtility::trimExplode('.', $key, true);
 			for ($i = count($arrKey) - 1; $i >= 0; $i--) {
-				$newValue = array();
+				$newValue = [];
 
 				if ($i == count($arrKey) - 1) {
 					$newValue[$arrKey[$i]] = $value;
@@ -488,7 +495,7 @@ class tx_datamintsfeuser_utils {
 			}
 
 			ArrayUtility::mergeRecursiveWithOverrule($conf, $value);
-		} else if ($value) {
+		} elseif ($value) {
 			$conf[$key] = $value;
 		}
 
@@ -498,49 +505,51 @@ class tx_datamintsfeuser_utils {
 	/**
 	 * Nimmt einen String entgegen um auf diesen ein trim() anzuwenden.
 	 *
-	 * @param	string		$string // Call by reference: Der String der getrimmt wird.
-	 * @return	void
+	 * @param string $string // Call by reference: Der String der getrimmt wird.
 	 */
-	public static function trimCallback(&$string) {
+	public function trimCallback(&$string): void
+	{
 		$string = trim($string);
 	}
 
 	/**
 	 * Nimmt einen String entgegen um auf diesen ein strip_tags() anzuwenden.
 	 *
-	 * @param	string		$string // Call by reference: Der String der gesaubert wird.
-	 * @return	void
+	 * @param string $string // Call by reference: Der String der gesaubert wird.
 	 */
-	public static function stripTagsCallback(&$string) {
+	public function stripTagsCallback(&$string): void
+	{
 		$string = strip_tags($string);
 	}
 
 	/**
 	 * Checks if a string is utf8 encoded or not.
 	 *
-	 * @param	string		$str
-	 * @return	boolean
+	 * @param string $str
 	 */
-	public static function checkUtf8($str) {
+	public function checkUtf8($str): bool
+	{
 		$len = strlen($str);
 		for ($i = 0; $i < $len; $i++) {
 			$c = ord($str[$i]);
 
 			if ($c > 128) {
-				if (($c > 247)) {
-					return FALSE;
-				} else if ($c > 239) {
+				if ($c > 247) {
+					return false;
+				}
+
+				if ($c > 239) {
 					$bytes = 4;
-				} else if ($c > 223) {
+				} elseif ($c > 223) {
 					$bytes = 3;
-				} else if ($c > 191) {
+				} elseif ($c > 191) {
 					$bytes = 2;
 				} else {
-					return FALSE;
+					return false;
 				}
 
 				if (($i + $bytes) > $len) {
-					return FALSE;
+					return false;
 				}
 
 				while ($bytes > 1) {
@@ -548,7 +557,7 @@ class tx_datamintsfeuser_utils {
 					$b = ord($str[$i]);
 
 					if ($b < 128 || $b > 191) {
-						return FALSE;
+						return false;
 					}
 
 					$bytes--;
@@ -556,11 +565,7 @@ class tx_datamintsfeuser_utils {
 			}
 		}
 
-		return TRUE;
+		return true;
 	}
-
 }
 
-if (defined('TYPO3_MODE') && $TYPO3_CONF_VARS[TYPO3_MODE]['XCLASS']['ext/datamints_feuser/lib/class.tx_datamintsfeuser_utils.php']) {
-	include_once($TYPO3_CONF_VARS[TYPO3_MODE]['XCLASS']['ext/datamints_feuser/lib/class.tx_datamintsfeuser_utils.php']);
-}

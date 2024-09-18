@@ -23,106 +23,178 @@
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
 
+use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Page\AssetCollector;
+use TYPO3\CMS\Fluid\Core\Rendering\RenderingContextFactory;
+use TYPO3\CMS\Typo3DbLegacy\Database\DatabaseConnection;
+use TYPO3\CMS\Core\Context\Exception\AspectPropertyNotFoundException;
+use TYPO3\CMS\Core\Context\Exception\AspectNotFoundException;
+use TYPO3\CMS\Core\Context\Context;
+use TYPO3\CMS\Core\Context\LanguageAspect;
+use TYPO3\CMS\Core\Site\Entity\SiteLanguage;
+use TYPO3\CMS\Frontend\Plugin\AbstractPlugin;
+use Datamints\Feuser\Utility\Utils;
+use TYPO3\CMS\Frontend\Controller\TypoScriptFrontendController;
+use TYPO3\CMS\Core\Domain\Repository\PageRepository;
+use In2code\Powermail\Domain\Service\CalculatingCaptchaService;
+use TYPO3\CMS\Core\Session\SessionManager;
+use TYPO3\CMS\Core\Mail\MailMessage;
+use TYPO3Fluid\Fluid\Core\ViewHelper\ViewHelperInvoker;
+use In2code\Powermail\ViewHelpers\Validation\CaptchaViewHelper;
 use In2code\Powermail\Domain\Model\Field;
 use TYPO3\CMS\Core\Utility\PathUtility;
 use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 
-require_once ExtensionManagementUtility::extPath('datamints_feuser', 'lib/class.tx_datamintsfeuser_utils.php');
-
 /**
  * Plugin 'Frontend User Management' for the 'datamints_feuser' extension.
  *
- * @author	Bernhard Baumgartl <b.baumgartl@datamints.com>
- * @package	TYPO3
- * @subpackage	tx_datamintsfeuser
+ * @author  Bernhard Baumgartl <b.baumgartl@datamints.com>
+ * @package TYPO3
+ * @subpackage  tx_datamintsfeuser
  */
-class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
+class tx_datamintsfeuser_pi1 extends AbstractPlugin
+{
+	/**
+	 * @var TypoScriptFrontendController
+	 */
 	protected $frontendController;
-	protected $databaseConnection;
+
+	protected DatabaseConnection $databaseConnection;
+
+	protected \Datamints\Feuser\Domain\Repository\FeUserRepository $repository;
+
 	protected $templateService;
 
-	private $pageRepository;
+	private ?object $pageRepository = null;
 
 	public $extKey = 'datamints_feuser';
+
 	public $prefixId = 'tx_datamintsfeuser_pi1';
+
 	public $scriptRelPath = 'pi1/class.tx_datamintsfeuser_pi1.php';
 
-	public $conf = array();
-	public $lang = array();
-	public $extConf = array();
-	public $feUsersTca = array();
+	public $conf = [];
+
+	public $lang = [];
+
+	public $extConf = [];
+
+	public $feUsersTca = [];
 
 	public $userId = 0;
+
 	public $contentId = 0;
+
 	public $storagePageId = 0;
 
-	public $arrUsedFields = array();
-	public $arrUniqueFields = array();
-	public $arrRequiredFields = array();
-	public $arrHiddenParams = array();
+	public $arrUsedFields = [];
+
+	public $arrUniqueFields = [];
+
+	public $arrRequiredFields = [];
+
+	public $arrHiddenParams = [];
 
 	const modeKeySend = 'send';
+
 	const modeKeyApprovalcheck = 'approvalcheck';
+
 	const modeKeyResendactivation = 'resendactivation';
 
 	const submodeKeySent = 'sent';
+
 	const submodeKeyError = 'error';
+
 	const submodeKeyFailure = 'failure';
+
 	const submodeKeySuccess = 'success';
+
 	const submodeKeyUserdelete = 'userdelete';
 
 	const showtypeKeyEdit = 'edit';
+
 	const showtypeKeyRegister = 'register';
 
 	const validationerrorKeySize = 'size';
+
 	const validationerrorKeyType = 'type';
+
 	const validationerrorKeyEqual = 'equal';
+
 	const validationerrorKeyValid = 'valid';
+
 	const validationerrorKeyDelete = 'delete';
+
 	const validationerrorKeyLength = 'length';
+
 	const validationerrorKeyUnique = 'unique';
+
 	const validationerrorKeyUpload = 'upload';
+
 	const validationerrorKeyRequired = 'required';
 
 	const submitparameterKeyHash = 'hash';
+
 	const submitparameterKeyMode = 'submit';
+
 	const submitparameterKeyPage = 'pageid';
+
 	const submitparameterKeyUser = 'userid';
+
 	const submitparameterKeySubmode = 'submitmode';
 
 	const specialfieldKeySubmit = 'submit';
+
 	const specialfieldKeyCaptcha = 'captcha';
+
 	const specialfieldKeyInfoitem = 'infoitem';
+
 	const specialfieldKeySeparator = 'separator';
+
 	const specialfieldKeyUserdelete = 'userdelete';
+
 	const specialfieldKeyResendactivation = 'resendactivation';
+
 	const specialfieldKeyPasswordconfirmation = 'passwordconfirmation';
+
+	private readonly Utils $utils;
+
+	private readonly LanguageAspect $languageAspect;
+
+	public function __construct($_ = null, ?TypoScriptFrontendController $frontendController = null)
+	{
+		parent::__construct($_, $frontendController);
+		$this->utils = GeneralUtility::makeInstance(Utils::class);
+		$context = GeneralUtility::makeInstance(Context::class);
+		assert($context instanceof Context);
+		$languageAspect = $context->getAspect('language');
+		assert($languageAspect instanceof LanguageAspect);
+		$this->languageAspect = $languageAspect;
+		//$this->databaseConnection = GeneralUtility::makeInstance(DatabaseConnection::class);
+	}
 
 	/**
 	 * The main method of the PlugIn
 	 *
-	 * @param	string		$content
-	 * @param	array		$conf
-	 * @return	string		$content
+	 * @param string $content
+	 * @param array $conf
+	 * @return  string      $content
 	 */
-	public function main($content, $conf) {
+	public function main($content, $conf)
+	{
 		$this->conf = $conf;
 
-		$this->databaseConnection = $this->databaseConnection ?: $GLOBALS['TYPO3_DB'];
 		$this->frontendController = $this->frontendController ?: $GLOBALS['TSFE'];
 		$this->templateService = $this->templateService ?: $this->cObj;
 
-		if (defined('TYPO3_branch') && (int)TYPO3_branch % 11 === 0) {
-			$this->pageRepository = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Domain\Repository\PageRepository::class);
-		} else {
-			$this->pageRepository = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\Page\\PageRepository');
-		}
+		$this->pageRepository = GeneralUtility::makeInstance(PageRepository::class);
+
 
 		// Debug.
-//		$this->frontendController->set_no_cache();
-//		$this->databaseConnection->debugOutput = TRUE;
+		//      $this->frontendController->set_no_cache();
+		//      $this->databaseConnection->debugOutput = TRUE;
 
 		// PiVars und Flexform laden.
 		$this->pi_setPiVarDefaults();
@@ -131,9 +203,6 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		// Erst die Konfiguration und dann die Labels laden, damit die in der Flexform gesetzten Labels auch beruecksichtigt werden!
 		$this->determineConfiguration();
 		$this->pi_loadLL();
-
-		// Niemals einen cHash setzen!
-		$this->pi_USER_INT_obj = 1;
 
 		// ToDo: Bessere Lösung für das Problem, dass ein Label nur zum LOCAL_LANG Array hinzugefügt wird, wenn die Sprache bereits im Array vorhanden ist!
 		if (is_array($this->conf['_LOCAL_LANG.'])) {
@@ -152,14 +221,28 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		// ContentId ermitteln.
 		$this->contentId = $this->cObj->data['uid'];
 
-		$this->feUsersTca = tx_datamintsfeuser_utils::getFeUsersTca($this->conf['fieldconfig.']);
-		$this->storagePageId = tx_datamintsfeuser_utils::getStoragePageId($this->getConfigurationByShowtype('userfolder'));
+		$this->feUsersTca = $this->utils->getFeUsersTca($this->conf['fieldconfig.']);
+		$userfolder = (int)$this->getConfigurationByShowtype('userfolder');
+
+		$this->storagePageId = $this->utils->getStoragePageId($userfolder);
+		$this->repository = GeneralUtility::makeInstance(\Datamints\Feuser\Domain\Repository\FeUserRepository::class, $this->storagePageId);
 
 		// Stylesheets in den Head einbinden.
-		$this->frontendController->additionalHeaderData[$this->prefixId . '[stylesheet]'] = ($this->conf['disablestylesheet']) ? '' : '<link rel="stylesheet" type="text/css" href="' . ($this->conf['stylesheetpath'] ?: tx_datamintsfeuser_utils::getTypoLinkUrl(PathUtility::stripPathSitePrefix(ExtensionManagementUtility::extPath($this->extKey)) . 'res/datamints_feuser.css')) . '" />';
+		$this->frontendController->additionalHeaderData[$this->prefixId . '[stylesheet]'] = ($this->conf['disablestylesheet']) ? '' : '<link rel="stylesheet" type="text/css" href="' . ($this->conf['stylesheetpath'] ?: $this->utils->getTypoLinkUrl(PathUtility::stripPathSitePrefix(ExtensionManagementUtility::extPath($this->extKey)) . 'res/datamints_feuser.css')) . '" />';
 
 		// Javascripts in den Head einbinden.
-		$this->frontendController->additionalHeaderData[$this->prefixId . '[jsvalidator]'] = ($this->conf['disablejsvalidator']) ? '' : '<script type="text/javascript" src="' . ($this->conf['jsvalidatorpath'] ?: tx_datamintsfeuser_utils::getTypoLinkUrl(PathUtility::stripPathSitePrefix(ExtensionManagementUtility::extPath($this->extKey)) . 'res/validator.min.js')) . '"></script>';
+		if (!$this->conf['disablejsvalidator']) {
+			$collector = GeneralUtility::makeInstance(AssetCollector::class);
+			assert($collector instanceof AssetCollector);
+			$jsvalidatorpath = $this->conf['jsvalidatorpath'] ?: 'EXT:' . $this->extKey . '/Resources/Public/validator.js';
+			$collector->addJavaScript(
+				'@datamints/feuser/validator',
+				$jsvalidatorpath,
+			);
+		}
+		// $this->frontendController->additionalHeaderData[$this->prefixId . '[jsvalidator]'] = ($this->conf['disablejsvalidator']) ? '' : '<script type="text/javascript" src="' . () . '"></script>';
+
+
 		$this->frontendController->additionalHeaderData[$this->prefixId . '[jsvalidation]'] = ($this->conf['disablejsconfig']) ? '' : '<script type="text/javascript">' . "\n/*<![CDATA[*/\n" . 'var datamints_feuser_config=[];var datamints_feuser_inputids=[];' . "\n/*]]>*/\n" . '</script>';
 		$this->frontendController->additionalHeaderData[$this->prefixId . '[jsvalidation][' . $this->contentId . ']'] = ($this->conf['disablejsconfig']) ? '' : '<script type="text/javascript">' . "\n/*<![CDATA[*/\n" . $this->getJSValidationConfiguration() . "\n/*]]>*/\n" . '</script>';
 
@@ -174,7 +257,6 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		}
 
 		switch ($this->piVars[$this->contentId][self::submitparameterKeyMode]) {
-
 			case self::modeKeySend:
 				$content = $this->doFormSubmit();
 				break;
@@ -189,7 +271,6 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			default:
 				$content = $this->showForm();
 				break;
-
 		}
 
 		return $this->pi_wrapInBaseClass($content);
@@ -197,20 +278,21 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 	/**
 	 * Bereitet die uebergebenen Daten fuer den Import in die Datenbank vor, und fuehrt diesen, wenn es keine Fehler gab, aus.
-	 *
-	 * @return	string
 	 */
-	public function doFormSubmit() {
+	public function doFormSubmit(): string
+	{
 		$mode = $this->conf['showtype'];
 		$submode = self::submodeKeyFailure;
-		$params = array();
-		$arrUpdate = array();
+		$params = [];
+		$arrUpdate = [];
 
 		// Falls ein Leerstring in einem Array-Wert an erster Stelle steht, handelt es sich um ein verstecktes Feld. Dieses muss entfernt werden.
-		tx_datamintsfeuser_utils::shiftEmptyArrayValuePostArray($this->piVars[$this->contentId]);
+		$this->utils->shiftEmptyArrayValuePostArray($this->piVars[$this->contentId]);
 
 		// Jedes Element in piVars trimmen.
-		array_walk_recursive($this->piVars[$this->contentId], 'tx_datamintsfeuser_utils::trimCallback');
+		array_walk_recursive($this->piVars[$this->contentId], function(&$item) {
+			$this->utils->trimCallback($item);
+		});
 
 		// Eine Validierung durchfuehren ueber alle Felder die eine gesonderte Konfigurtion bekommen haben.
 		$validCheck = $this->checkValid();
@@ -229,17 +311,18 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		}
 
 		// Wenn der User eine neue Aktivierungsmail beantragt hat.
-		if ($this->piVars[$this->contentId][self::specialfieldKeyResendactivation] && in_array(tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyResendactivation), $this->arrUsedFields)) {
+		if ($this->piVars[$this->contentId][self::specialfieldKeyResendactivation] && in_array($this->utils->getSpecialFieldKey(self::specialfieldKeyResendactivation), $this->arrUsedFields)) {
 			// Falls der Anzeigetyp "list" ist (Liste der im Cookie gespeicherten User), alle uebergebenen User ermitteln und fuer das erneute zusenden verwenden. Ansonsten die uebergebene E-Mail verwenden.
-//			if ($this->conf['shownotactivated'] == 'list') {
-//				$arrNotActivated = $this->getNotActivatedUserArray($this->piVars[$this->contentId][$fieldName]);
-//				$res = $this->databaseConnection->exec_SELECTquery('uid, tx_datamintsfeuser_approval_level', 'fe_users', 'pid = ' . $this->storagePageId . ' AND uid IN(' . implode(',', $arrNotActivated) . ') AND disable = 1 AND deleted = 0');
-//			} else {
-				$res = $this->databaseConnection->exec_SELECTquery('uid, tx_datamintsfeuser_approval_level', 'fe_users', 'pid = ' . $this->storagePageId . ' AND email = ' . $this->databaseConnection->fullQuoteStr(strtolower($this->piVars[$this->contentId][self::specialfieldKeyResendactivation]), 'fe_users') . ' AND disable = 1 AND deleted = 0', '', '', '1');
-//			}
-
-			while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
-				// Genehmigungstypen aufsteigend sortiert ermitteln. Das ist noetig um das Level dem richtigen Typ zuordnen zu koennen.
+			//          if ($this->conf['shownotactivated'] == 'list') {
+			//              $arrNotActivated = $this->getNotActivatedUserArray($this->piVars[$this->contentId][$fieldName]);
+			//              $res = $this->databaseConnection->exec_SELECTquery('uid, tx_datamintsfeuser_approval_level', 'fe_users', 'pid = ' . $this->storagePageId . ' AND uid IN(' . implode(',', $arrNotActivated) . ') AND disable = 1 AND deleted = 0');
+			//          } else {
+			//$res = $this->databaseConnection->exec_SELECTquery('uid, tx_datamintsfeuser_approval_level', 'fe_users', 'pid = ' . $this->storagePageId . ' AND email = ' . $this->databaseConnection->fullQuoteStr(strtolower((string)$this->piVars[$this->contentId][self::specialfieldKeyResendactivation]), 'fe_users') . ' AND disable = 1 AND deleted = 0', '', '', '1');
+			//          }
+$rows = $this->repository->findOneByEmail(strtolower((string)$this->piVars[$this->contentId][self::specialfieldKeyResendactivation]));
+			//while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
+			foreach ($rows as $row) {
+			// Genehmigungstypen aufsteigend sortiert ermitteln. Das ist noetig um das Level dem richtigen Typ zuordnen zu koennen.
 				// Beispiel: approvalcheck = ,doubleoptin,adminapproval => beim exploden kommt dann ein leeres Arrayelement herraus, das nach dem entfernen einen leeren Platz uebrig laesst.
 				$arrApprovalTypes = $this->getApprovalTypes();
 				$approvalType = $arrApprovalTypes[count($arrApprovalTypes) - $row['tx_datamintsfeuser_approval_level']];
@@ -275,10 +358,10 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			}
 
 			$fieldConfig = $this->feUsersTca['columns'][$fieldName]['config'];
-			$arrFieldConfigEval = GeneralUtility::trimExplode(',', $fieldConfig['eval'], TRUE);
+			$arrFieldConfigEval = GeneralUtility::trimExplode(',', $fieldConfig['eval'], true);
 
 			// Ist das Feld schon gesaeubert worden (MySQL, PHP, HTML, ...).
-			$isCleaned = FALSE;
+			$isCleaned = false;
 
 			// Datumsfelder behandeln.
 			if (in_array('date', $arrFieldConfigEval)) {
@@ -288,7 +371,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					$arrUpdate[$fieldName] = date_timestamp_get($date);
 				}
 
-				$isCleaned = TRUE;
+				$isCleaned = true;
 			}
 
 			// Datumzeitfelder behandeln.
@@ -299,32 +382,32 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					$arrUpdate[$fieldName] = date_timestamp_get($datetime);
 				}
 
-				$isCleaned = TRUE;
+				$isCleaned = true;
 			}
 
 			// Passwordfelder behandeln.
 			if (in_array('password', $arrFieldConfigEval)) {
 				$this->cleanPasswordField($arrUpdate, $fieldName, $fieldConfig);
 
-				$isCleaned = TRUE;
+				$isCleaned = true;
 			}
 
 			// Read only behandeln.
 			if ($fieldConfig['readOnly']) {
-				$isCleaned = TRUE;
+				$isCleaned = true;
 			}
 
 			// Checkboxen behandeln.
 			if ($fieldConfig['type'] == 'check') {
 				$this->cleanCheckField($arrUpdate, $fieldName, $fieldConfig);
 
-				$isCleaned = TRUE;
+				$isCleaned = true;
 			}
 
 			// Multiple Checkboxen / Selectboxen.
 			if ($fieldConfig['type'] == 'select' && $fieldConfig['size'] > 1) {
 				$this->cleanMultipleSelectField($arrUpdate, $fieldName, $fieldConfig);
-				$isCleaned = TRUE;
+				$isCleaned = true;
 			}
 
 			// Dateifelder behandeln.
@@ -338,13 +421,13 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					return $this->showForm($valueCheck);
 				}
 
-				$isCleaned = TRUE;
+				$isCleaned = true;
 			}
 
 			// Datenbank-Gruppenfelder.
 			if ($fieldConfig['type'] == 'group' && $fieldConfig['internal_type'] == 'db') {
 				$this->cleanGroupDatabaseField($arrUpdate, $fieldName, $fieldConfig);
-				$isCleaned = TRUE;
+				$isCleaned = true;
 			}
 
 			// Wenn noch nicht gesaeubert dann nachholen!
@@ -354,13 +437,13 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		}
 
 		// Konvertiert alle moeglichen Zeichen die fuer die Ausgabe angepasst wurden zurueck.
-		tx_datamintsfeuser_utils::htmlspecialcharsPostArray($arrUpdate, TRUE);
+		$this->utils->htmlspecialcharsPostArray($arrUpdate, true);
 
 		// Zusatzfelder setzten, die nicht aus der Form uebergeben wurden.
 		$arrUpdate['tstamp'] = time();
 
 		// Wenn der User geloescht werden soll.
-		if ($this->piVars[$this->contentId][self::specialfieldKeyUserdelete] && in_array(tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyUserdelete), $this->arrUsedFields)) {
+		if ($this->piVars[$this->contentId][self::specialfieldKeyUserdelete] && in_array($this->utils->getSpecialFieldKey(self::specialfieldKeyUserdelete), $this->arrUsedFields)) {
 			$arrUpdate['deleted'] = '1';
 		}
 
@@ -389,16 +472,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		// Hook um weiter Userupdates zu machen.
 		if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['sendForm'])) {
-			$_params = array(
-					'variables' => array(
-							'arrUpdate' => $arrUpdate
-						),
-					'parameters' => array(
-							'mode' => &$mode,
-							'submode' => &$submode,
-							'params' => &$params
-						)
-				);
+			$_params = ['variables' => ['arrUpdate' => $arrUpdate], 'parameters' => ['mode' => &$mode, 'submode' => &$submode, 'params' => &$params]];
 
 			foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['sendForm'] as $_funcRef) {
 				GeneralUtility::callUserFunction($_funcRef, $_params, $this);
@@ -411,32 +485,31 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ueberprueft ob alle Validierungen eingehalten wurden.
 	 *
-	 * @return	array		$valueCheck
+	 * @return  array       $valueCheck
+	 * @throws \Doctrine\DBAL\Exception
 	 */
-	public function checkValid() {
-		$valueCheck = array();
+	public function checkValid(): array
+	{
+		$valueCheck = [];
 
 		// Alle ausgewaehlten Felder durchgehen.
 		foreach ($this->arrUsedFields as $fieldName) {
-			$fieldName = tx_datamintsfeuser_utils::getSpecialFieldName($fieldName);
+			$fieldName = $this->utils->getSpecialFieldName($fieldName);
 			$fieldConfig = $this->feUsersTca['columns'][$fieldName]['config'];
 
-			$value = $this->piVars[$this->contentId][$fieldName];
+			$value = $this->piVars[$this->contentId][$fieldName] ?? null;
 			$validate = $this->conf['validate.'][$fieldName . '.'];
 
 			// Besonderes Feld das fest in der Extension verbaut ist (passwordconfirmation), und ueberprueft werden soll.
-			if ($fieldName == self::specialfieldKeyPasswordconfirmation && $this->conf['showtype'] == self::showtypeKeyEdit) {
-				if (!tx_datamintsfeuser_utils::checkPassword($value, $this->frontendController->fe_user->user['password'])) {
-					$valueCheck[$fieldName] = self::validationerrorKeyValid;
-				}
+			if ($fieldName == self::specialfieldKeyPasswordconfirmation && $this->conf['showtype'] == self::showtypeKeyEdit && !$this->utils->checkPassword($value, $this->frontendController->fe_user->user['password'])) {
+				$valueCheck[$fieldName] = self::validationerrorKeyValid;
 			}
 
 			// Besonderes Feld das fest in der Extension verbaut ist (resendactivation), und ueberprueft werden soll.
 			if ($fieldName == self::specialfieldKeyResendactivation && $value) {
-				$res = $this->databaseConnection->exec_SELECTquery('COUNT(uid) as count', 'fe_users', 'pid = ' . $this->storagePageId . ' AND (uid = ' . intval($value) . ' OR email = ' . $this->databaseConnection->fullQuoteStr(strtolower($value), 'fe_users') . ') AND disable = 1 AND deleted = 0');
-				$row = $this->databaseConnection->sql_fetch_assoc($res);
+				$count = $this->repository->countByUidOrEmail($value);
 
-				if ($row['count'] < 1) {
+				if ($count < 1) {
 					$valueCheck[$fieldName] = self::validationerrorKeyValid;
 				}
 			}
@@ -467,23 +540,17 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			}
 
 			// Wenn ueberhaupt kein Wert / Parameter uebergeben wurde, dann naechstes Feld vornehmen.
-			if (!$value && !isset($value)) {
+			if (null === $value) {
 				continue;
 			}
 
 			// Wenn kein Inhalt im Parameter steht und wenn der Typ des Feldes nicht check, radio oder select ist, dann naechstes Feld vornehmen.
-			if (!$value && !in_array($fieldConfig['type'], array('check', 'radio', 'select'))) {
-				continue;
-			}
-
-			// Wenn ueberhaupt kein Parameter angekommen ist und wenn der Typ des Feldes check, radio oder select ist, dann naechstes Feld vornehmen.
-			if (!isset($value) && in_array($fieldConfig['type'], array('check', 'radio', 'select'))) {
+			if (!$value && !in_array($fieldConfig['type'], ['check', 'radio', 'select'])) {
 				continue;
 			}
 
 			// Ansonsten Feldvalidierung anhand des Validierungstyps vornehmen.
 			switch ($validate['type']) {
-
 				case 'password':
 					$valueRep = $this->piVars[$this->contentId][$fieldName . '_rep'];
 					$arrLength[0] = '6';
@@ -493,52 +560,56 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 							$arrLength = GeneralUtility::trimExplode(',', $validate['length']);
 						}
 
-						if (!preg_match('/^.{' . $arrLength[0] . ',' . $arrLength[1] . '}$/', $value)) {
+						if (!preg_match('/^.{' . $arrLength[0] . ',' . $arrLength[1] . '}$/', (string)$value)) {
 							$valueCheck[$fieldName] = self::validationerrorKeyLength;
 						}
 					} else {
 						$valueCheck[$fieldName] = self::validationerrorKeyEqual;
 					}
+
 					break;
 
 				case 'email':
-					if (!preg_match('/^[a-zA-Z0-9\._%+-]+@[a-zA-Z0-9\.-]+\.[a-zA-Z]{2,63}$/', $value)) {
+					if (!preg_match('/^[a-zA-Z0-9\._%+-]+@[a-zA-Z0-9\.-]+\.[a-zA-Z]{2,63}$/', (string)$value)) {
 						$valueCheck[$fieldName] = self::validationerrorKeyValid;
 					}
+
 					break;
 
 				case 'username':
-					if (!preg_match('/^[^ ]*$/', $value)) {
+					if (!preg_match('/^[^ ]*$/', (string)$value)) {
 						$valueCheck[$fieldName] = self::validationerrorKeyValid;
 					}
+
 					break;
 
 				case 'zero':
 					if ($value == '0') {
 						$valueCheck[$fieldName] = self::validationerrorKeyValid;
 					}
+
 					break;
 
 				case 'emptystring':
 					if ($value == '') {
 						$valueCheck[$fieldName] = self::validationerrorKeyValid;
 					}
+
 					break;
 
 				case 'custom':
 					if ($validate['regexp']) {
 						if (is_array($value)) {
 							foreach ($value as $subValue) {
-								if (!preg_match($validate['regexp'], $subValue)) {
+								if (!preg_match($validate['regexp'], (string)$subValue)) {
 									$valueCheck[$fieldName] = self::validationerrorKeyValid;
 								}
 							}
-						} else {
-							if (!preg_match($validate['regexp'], $value)) {
-								$valueCheck[$fieldName] = self::validationerrorKeyValid;
-							}
+						} elseif (!preg_match($validate['regexp'], (string)$value)) {
+							$valueCheck[$fieldName] = self::validationerrorKeyValid;
 						}
 					}
+
 					if ($validate['length']) {
 						$arrLength = GeneralUtility::trimExplode(',', $validate['length']);
 
@@ -546,16 +617,13 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 							if (($arrLength[0] && count($value) < $arrLength[0]) || ($arrLength[1] && count($value) > $arrLength[1])) {
 								$valueCheck[$fieldName] = self::validationerrorKeyLength;
 							}
-						} else {
-							if (!preg_match('/^.{' . $arrLength[0] . ',' . $arrLength[1] . '}$/', $value)) {
-								$valueCheck[$fieldName] = self::validationerrorKeyLength;
-							}
+						} elseif (!preg_match('/^.{' . $arrLength[0] . ',' . $arrLength[1] . '}$/', (string)$value)) {
+							$valueCheck[$fieldName] = self::validationerrorKeyLength;
 						}
 					}
+
 					break;
-
 			}
-
 		}
 
 		return $valueCheck;
@@ -564,28 +632,27 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ueberprueft die uebergebenen Inhalte, bei bestimmten Feldern, ob diese in der Datenbank schon vorhanden sind.
 	 *
-	 * @return	array		$valueCheck
+	 * @return  array       $valueCheck
+	 * @throws \Doctrine\DBAL\Exception
 	 */
-	public function checkUnique() {
-		$where = '';
-		$valueCheck = array();
-
-		// Beim Bearbeiten, den eigenen Datensatz nicht ueberpruefen.
-		if ($this->conf['showtype'] == self::showtypeKeyEdit) {
-			$where .= ' AND uid <> ' . $this->userId;
-		}
-
-		// Wenn beim Bearbeiten keine "userfolder" gesetzt ist, soll global ueberprueft werden, ansonsten nur im Storage!
-		if (!$this->conf['uniqueglobal'] && $this->getConfigurationByShowtype('userfolder')) {
-			$where .= ' AND pid = ' . $this->storagePageId;
-		}
+	public function checkUnique(): array
+	{
+		$valueCheck = [];
 
 		foreach ($this->arrUniqueFields as $fieldName) {
 			if ($this->piVars[$this->contentId][$fieldName]) {
-				$res = $this->databaseConnection->exec_SELECTquery('COUNT(uid) as count', 'fe_users', $fieldName . ' = ' . $this->databaseConnection->fullQuoteStr($this->piVars[$this->contentId][$fieldName], 'fe_users') . $where . ' AND deleted = 0');
-				$row = $this->databaseConnection->sql_fetch_assoc($res);
+				//$res = $this->databaseConnection->exec_SELECTquery('COUNT(uid) as count', 'fe_users', $fieldName . ' = ' . $this->databaseConnection->fullQuoteStr($this->piVars[$this->contentId][$fieldName], 'fe_users') . $where . ' AND deleted = 0');
+				//$row = $this->databaseConnection->sql_fetch_assoc($res);
 
-				if ($row['count'] >= 1) {
+				$count = $this->repository->countByFieldAndValue(
+					$fieldName,
+					$this->piVars[$this->contentId][$fieldName],
+					$this->userId ?? 0,
+					$this->conf['showtype'] == self::showtypeKeyEdit,
+					!$this->conf['uniqueglobal'] && $this->getConfigurationByShowtype('userfolder')
+				);
+
+				if ($count >= 1) {
 					$valueCheck[$fieldName] = self::validationerrorKeyUnique;
 				}
 			}
@@ -597,10 +664,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ueberprueft ob alle benoetigten Felder mit Inhalten uebergeben wurden.
 	 *
-	 * @return	array		$valueCheck
+	 * @return  array       $valueCheck
 	 */
-	public function checkRequired() {
-		$valueCheck = array();
+	public function checkRequired(): array
+	{
+		$valueCheck = [];
 
 		// Geht alle benoetigten Felder durch und ermittelt fehlende.
 		foreach ($this->arrRequiredFields as $fieldName) {
@@ -611,12 +679,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 			$fieldConfig = $this->feUsersTca['columns'][$fieldName]['config'];
 
-			$fieldName = tx_datamintsfeuser_utils::getSpecialFieldName($fieldName);
+			$fieldName = $this->utils->getSpecialFieldName($fieldName);
 			$fieldValue = $this->piVars[$this->contentId][$fieldName];
 
 			// Arrays zum Ueberpruefen normalisieren, und leere Werte entfernen!
 			if (is_array($fieldValue)) {
-				$fieldValue = implode(',', GeneralUtility::trimExplode(',', implode(',', $fieldValue), TRUE));
+				$fieldValue = implode(',', GeneralUtility::trimExplode(',', implode(',', $fieldValue), true));
 			}
 
 			// Dadurch dass die einfache Checkbox ein besonderes verstecktes Feld hat (value="0"), muss dieser Wert erst normalisiert werden!
@@ -633,14 +701,14 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				}
 
 				$arrFieldVars = $this->piVars[$this->contentId][$fieldName];
-				$arrFilenames = GeneralUtility::trimExplode(',', $this->frontendController->fe_user->user[$fieldName], TRUE);
+				$arrFilenames = GeneralUtility::trimExplode(',', $this->frontendController->fe_user->user[$fieldName], true);
 
 				foreach ($arrFieldVars['files'] as $sentKey => $filename) {
 					$sentKey = intval($sentKey);
-					$savedKey = array_search($filename, $arrFilenames);
+					$savedKey = array_search($filename, $arrFilenames, true);
 
 					// Wenn eine Datei vorhanden (egal ob neu uebergeben oder bereits vorhanden) und diese nicht geloescht wird, wird kein Fehler zurueckgegeben!
-					if ($_FILES[$this->prefixId]['name'][$this->contentId][$fieldName]['upload'][$sentKey] || ($savedKey !== FALSE && !$arrFieldVars['delete'][$sentKey])) {
+					if ($_FILES[$this->prefixId]['name'][$this->contentId][$fieldName]['upload'][$sentKey] || ($savedKey !== false && !$arrFieldVars['delete'][$sentKey])) {
 						unset($valueCheck[$fieldName]);
 					}
 				}
@@ -660,73 +728,21 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ueberprueft ob das Captcha richtig eingegeben wurde.
 	 *
-	 * @param	string		$value
-	 * @return	string
+	 * @param string $value
 	 */
-	public function checkCaptcha($value) {
+	public function checkCaptcha($value): string
+	{
 		if (!ExtensionManagementUtility::isLoaded($this->conf['captcha.']['use'])) {
 			return '';
 		}
 
-		switch ($this->conf['captcha.']['use']) {
-
-			case 'powermail':
-				$calculatingCaptchaService = GeneralUtility::makeInstance(\In2code\Powermail\Domain\Service\CalculatingCaptchaService::class);
-
-				$field = new Field();
-				$field->_setProperty('uid', $this->contentId);
-				if (!$calculatingCaptchaService->validCode($value, $field)) {
-					return self::validationerrorKeyValid;
-				}
-
-				break;
-
-			case 'captcha':
-				session_start();
-
-				$captchaString = $_SESSION['tx_captcha_string'];
-
-				if ($value != $captchaString) {
-					return self::validationerrorKeyValid;
-				}
-
-				break;
-
-			case 'sr_freecap':
-				require_once(ExtensionManagementUtility::extPath($this->conf['captcha.']['use']) . 'pi2/class.tx_srfreecap_pi2.php');
-
-				$freecap = GeneralUtility::makeInstance('tx_srfreecap_pi2');
-
-				if (!$freecap->checkWord($value)) {
-					return self::validationerrorKeyValid;
-				}
-
-				break;
-
-//			case 'jm_recaptcha':
-//				require_once(ExtensionManagementUtility::extPath($this->conf['captcha.']['use']) . 'class.tx_jmrecaptcha.php');
-//
-//				$recaptcha = GeneralUtility::makeInstance('tx_jmrecaptcha');
-//
-//				$status = $recaptcha->validateReCaptcha();
-//
-//				if (!$status['verified']) {
-//					 return self::validationerrorKeyValid;
-//				}
-//
-//				break;
-
-			case 'wt_calculating_captcha':
-				require_once(ExtensionManagementUtility::extPath($this->conf['captcha.']['use']) . 'class.tx_wtcalculatingcaptcha.php');
-
-				$calculatingcaptcha = GeneralUtility::makeInstance('tx_wtcalculatingcaptcha');
-
-				if (!$calculatingcaptcha->correctCode($value)) {
-					return self::validationerrorKeyValid;
-				}
-
-				break;
-
+		if ($this->conf['captcha.']['use'] === 'powermail') {
+			$calculatingCaptchaService = GeneralUtility::makeInstance(CalculatingCaptchaService::class);
+			$field = new Field();
+			$field->_setProperty('uid', $this->contentId);
+			if (!$calculatingCaptchaService->validCode($value, $field)) {
+				return self::validationerrorKeyValid;
+			}
 		}
 
 		return '';
@@ -735,14 +751,14 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Falls angegebe das Passwort fuer ein Passwortfeld generieren und / oder verschluesseln.
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @return	boolean
+	 * @param array $arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
+	 * @param string $fieldName
+	 * @param array $fieldConfig
 	 */
-	public function cleanPasswordField(&$arrUpdate, $fieldName, $fieldConfig) {
+	public function cleanPasswordField(array &$arrUpdate, $fieldName, $fieldConfig): bool
+	{
 		// Password generieren und verschluesseln je nach Einstellung.
-		$password = tx_datamintsfeuser_utils::generatePassword($this->piVars[$this->contentId][$fieldName], $this->getConfigurationByShowtype('generatepassword.'));
+		$password = $this->utils->generatePassword($this->piVars[$this->contentId][$fieldName], $this->getConfigurationByShowtype('generatepassword.'));
 		$arrUpdate[$fieldName] = $password['encrypted'];
 
 		// Wenn kein Password uebergeben wurde auch keins schreiben.
@@ -750,25 +766,23 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			unset($arrUpdate[$fieldName]);
 		}
 
-		return TRUE;
+		return true;
 	}
 
 	/**
 	 * Saeubert Checkboxfelder, indem die uebergebenen Werte durch 1 oder 0 ausgetauscht werden.
 	 * Gilt fuer eine oder mehrere Checkboxen (nicht fuer scrollbare Listen).
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @return	boolean
+	 * @param array $arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
+	 * @param string $fieldName
 	 */
-	public function cleanCheckField(&$arrUpdate, $fieldName, $fieldConfig) {
+	public function cleanCheckField(array &$arrUpdate, $fieldName, array $fieldConfig): bool
+	{
 		$checkItemsCount = count((array)$fieldConfig['items']);
 
 		// Mehrere Checkboxen oder eine Checkbox.
 		if ($checkItemsCount > 1) {
 			$binString = '';
-
 			for ($key = 0; $key < $checkItemsCount; $key++) {
 				if ($this->piVars[$this->contentId][$fieldName][$key]) {
 					$binString .= '1';
@@ -778,32 +792,29 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			}
 
 			$arrUpdate[$fieldName] = bindec(strrev($binString));
+		} elseif ($this->piVars[$this->contentId][$fieldName]) {
+			$arrUpdate[$fieldName] = '1';
 		} else {
-			if ($this->piVars[$this->contentId][$fieldName]) {
-				$arrUpdate[$fieldName] = '1';
-			} else {
-				$arrUpdate[$fieldName] = '0';
-			}
+			$arrUpdate[$fieldName] = '0';
 		}
 
-		return TRUE;
+		return true;
 	}
 
 	/**
 	 * Saeubert MultipleSelectboxfelder indem auf jeden uebergebenen Wert intval() angewendet wird.
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @return	boolean
+	 * @param array $arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
+	 * @param string $fieldName
 	 */
-	public function cleanMultipleSelectField(&$arrUpdate, $fieldName, $fieldConfig) {
+	public function cleanMultipleSelectField(array &$arrUpdate, $fieldName, array $fieldConfig): bool
+	{
 		$maxItemsCount = 1;
-		$arrCleanedValues = array();
+		$arrCleanedValues = [];
 
 		// Wenn nichts ausgewaehlt wurde, wird dieser Parameter auch nicht uebergeben, daher zuerst ueberpruefen, ob etwas vorhanden ist.
 		if (!is_array($this->piVars[$this->contentId][$fieldName])) {
-			return FALSE;
+			return false;
 		}
 
 		foreach ($this->piVars[$this->contentId][$fieldName] as $val) {
@@ -822,26 +833,29 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		$arrUpdate[$fieldName] = implode(',', $arrCleanedValues);
 
-		return TRUE;
+		return true;
 	}
 
 	/**
 	 * Saeubert Group- und MultipleCheckboxfelder (scrollbare Liste).
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @return	boolean
+	 * @param array $arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
+	 * @param string $fieldName
 	 */
-	public function cleanGroupDatabaseField(&$arrUpdate, $fieldName, $fieldConfig) {
+	public function cleanGroupDatabaseField(array &$arrUpdate, $fieldName, array $fieldConfig): bool
+	{
 		$maxItemsCount = 1;
-		$arrCleanedValues = array();
+		$arrCleanedValues = [];
 
-		$arrAllowed = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], TRUE);
+		$arrAllowed = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], true);
 
 		// Hier werden absichtlich nur die Erlaubten Tabellen benutzt, da es sonst unmengen an möglichen Optionen geben wuerde!
 		foreach ($arrAllowed as $table) {
-			if (!$GLOBALS['TCA'][$table] || !is_array($this->piVars[$this->contentId][$fieldName])) {
+			if (!$GLOBALS['TCA'][$table]) {
+				continue;
+			}
+
+			if (!is_array($this->piVars[$this->contentId][$fieldName])) {
 				continue;
 			}
 
@@ -850,7 +864,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					break;
 				}
 
-				if (preg_match('/^' . $table . '_[0-9]+$/', $val)) {
+				if (preg_match('/^' . $table . '_[0-9]+$/', (string)$val)) {
 					$arrCleanedValues[] = $val;
 					$maxItemsCount++;
 				}
@@ -861,51 +875,50 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		// ToDo: TCA Option "prepend_tname" beachten!
 		if (count($arrAllowed) == 1) {
 			foreach ($arrCleanedValues as $key => $val) {
-				$arrCleanedValues[$key] = substr($val, strripos($val, '_') + 1);
+				$arrCleanedValues[$key] = substr((string)$val, strripos((string)$val, '_') + 1);
 			}
 		}
 
 		$arrUpdate[$fieldName] = implode(',', $arrCleanedValues);
 
-		return TRUE;
+		return true;
 	}
 
 	/**
 	 * Saeubert die uebrigen Felder (Input, Textarea, ...).
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @return	boolean
+	 * @param array $arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
+	 * @param string $fieldName
 	 */
-	public function cleanUncleanedField(&$arrUpdate, $fieldName, $fieldConfig) {
+	public function cleanUncleanedField(array &$arrUpdate, $fieldName, array $fieldConfig): bool
+	{
 		// Wenn eine Selectbox die Ihren Inhalt aus einer anderen Tabelle hat angezeigt wurde, dann darf nur eine Zahl kommen!
 		if ($fieldConfig['type'] == 'select' && $fieldConfig['foreign_table']) {
 			$arrUpdate[$fieldName] = intval($this->piVars[$this->contentId][$fieldName]);
 
-			return TRUE;
+			return true;
 		}
 
 		// Ansonsten Standardsaeuberung.
-		$arrUpdate[$fieldName] = strip_tags($this->piVars[$this->contentId][$fieldName]);
+		$arrUpdate[$fieldName] = strip_tags((string)$this->piVars[$this->contentId][$fieldName]);
 
 		// Wenn E-Mail Feld, alle Zeichen zu kleinen Zeichen konvertieren.
 		if ($fieldName == 'email') {
 			$arrUpdate[$fieldName] = strtolower($arrUpdate[$fieldName]);
 		}
 
-		return TRUE;
+		return true;
 	}
 
 	/**
 	 * The saveDeleteImage method is used to update or delete an image of an address
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @return	string		$error
+	 * @param array $arrUpdate // Call by reference: Das Array in dem das zu saubernde Feld ist.
+	 * @param string $fieldName
+	 * @return  string      $error
 	 */
-	public function saveDeleteFiles(&$arrUpdate, $fieldName, $fieldConfig) {
+	public function saveDeleteFiles(array &$arrUpdate, $fieldName, array $fieldConfig): string
+	{
 		$error = '';
 
 		if (!is_array($this->piVars[$this->contentId][$fieldName])) {
@@ -915,25 +928,28 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$arrFieldVars = $this->piVars[$this->contentId][$fieldName];
 
 		$maxSize = $fieldConfig['max_size'] * 1024;
-		$uploadFolder = tx_datamintsfeuser_utils::fixPath($fieldConfig['uploadfolder']);
-		$allowedTypes = GeneralUtility::trimExplode(',', strtolower(str_replace('*', '', $fieldConfig['allowed'])), TRUE);
-		$disallowedTypes = GeneralUtility::trimExplode(',', strtolower(str_replace('*', '', $fieldConfig['disallowed'])), TRUE);
+		$uploadFolder = $this->utils->fixPath($fieldConfig['uploadfolder']);
+		$allowedTypes = GeneralUtility::trimExplode(',', strtolower(str_replace('*', '', $fieldConfig['allowed'])), true);
+		$disallowedTypes = GeneralUtility::trimExplode(',', strtolower(str_replace('*', '', $fieldConfig['disallowed'])), true);
 
-		$arrFilenames = GeneralUtility::trimExplode(',', $arrUpdate[$fieldName], TRUE);
+		$arrFilenames = GeneralUtility::trimExplode(',', $arrUpdate[$fieldName], true);
 
-		$arrProcessedKeys = array();
+		$arrProcessedKeys = [];
 
 		foreach ($arrFieldVars['files'] as $sentKey => $filename) {
 			$sentKey = intval($sentKey);
-			$savedKey = array_search($filename, $arrFilenames);
-
+			$savedKey = array_search($filename, $arrFilenames, true);
 			// Falls schon abgearbeitet oder die maximale Anzahl erricht ist, abbrechen!
-			if (in_array($sentKey, $arrProcessedKeys) || ($fieldConfig['maxitems'] && count($arrProcessedKeys) >= $fieldConfig['maxitems'])) {
+			if (in_array($sentKey, $arrProcessedKeys)) {
+				continue;
+			}
+
+			if ($fieldConfig['maxitems'] && count($arrProcessedKeys) >= $fieldConfig['maxitems']) {
 				continue;
 			}
 
 			// Wenn kein Bild hochgeladen wurde und keines geloescht werden kann, abbrechen!
-			if (!$_FILES[$this->prefixId]['name'][$this->contentId][$fieldName]['upload'][$sentKey] && !($savedKey !== FALSE && $arrFieldVars['delete'][$sentKey])) {
+			if (!$_FILES[$this->prefixId]['name'][$this->contentId][$fieldName]['upload'][$sentKey] && !($savedKey !== false && $arrFieldVars['delete'][$sentKey])) {
 				continue;
 			}
 
@@ -963,7 +979,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					break;
 				}
 
-				$newFiletype = pathinfo(strtolower($_FILES[$this->prefixId]['name'][$this->contentId][$fieldName]['upload'][$sentKey]), PATHINFO_EXTENSION);
+				$newFiletype = pathinfo(strtolower((string)$_FILES[$this->prefixId]['name'][$this->contentId][$fieldName]['upload'][$sentKey]), PATHINFO_EXTENSION);
 
 				// Wenn nur bestimmte Datei-Typen erlaubt sind, und der aktuelle Typ nicht in den Erlaubten enthalten ist!
 				if ($allowedTypes && !in_array($newFiletype, $allowedTypes)) {
@@ -979,7 +995,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					break;
 				}
 
-				$newFilename = basename(strtolower($_FILES[$this->prefixId]['name'][$this->contentId][$fieldName]['upload'][$sentKey]), '.' . $newFiletype);
+				$newFilename = basename(strtolower((string)$_FILES[$this->prefixId]['name'][$this->contentId][$fieldName]['upload'][$sentKey]), '.' . $newFiletype);
 				$newFilename = preg_replace('/[^a-z0-9]/', '', $newFilename) . '_' . sprintf('%02d', $sentKey + 1) . '_' . time() . '.' . $newFiletype;
 
 				$filePath = GeneralUtility::getFileAbsFileName($uploadFolder . $newFilename);
@@ -989,14 +1005,14 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					chmod($filePath, 0644);
 
 					$arrFilenames[] = $newFilename;
-					$arrFieldVars['delete'][$sentKey] = TRUE;
+					$arrFieldVars['delete'][$sentKey] = true;
 
 					// Wenn Das Bild erfolgreich hochgeladen wurde, Fehlermeldung zuruecksetzten.
 					$error = '';
 				}
 			}
 
-			if ($savedKey !== FALSE && $arrFieldVars['delete'][$sentKey]) {
+			if ($savedKey !== false && $arrFieldVars['delete'][$sentKey]) {
 				$filePath = GeneralUtility::getFileAbsFileName($uploadFolder . $arrFilenames[$savedKey]);
 
 				if (file_exists($filePath) && unlink($filePath)) {
@@ -1021,16 +1037,16 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	 * Kopiert anhand der angegebenen Konfigurationen Inhalte in dem uebergebenen Array an eine neue oder andere Stelle.
 	 * Dabei wird auf jeden kopierten Inhalt die stdWrap Funktionen angewendet.
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array dessen Inhalte kopiert werden.
-	 * @return	boolean
+	 * @param array $arrUpdate // Call by reference: Das Array dessen Inhalte kopiert werden.
 	 */
-	public function copyFields(&$arrUpdate) {
+	public function copyFields(array &$arrUpdate): bool
+	{
 		if (!is_array($this->conf['copyfields.'])) {
-			return FALSE;
+			return false;
 		}
 
 		// Kopiert den Inhalt eines Feldes in ein anderes Feld.
-		$arrCopiedFields = array();
+		$arrCopiedFields = [];
 
 		foreach ($this->conf['copyfields.'] as $fieldToCopy => $arrCopyToFields) {
 			$fieldToCopy = rtrim($fieldToCopy, '.');
@@ -1062,22 +1078,23 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				if ($arrCopyToFields[$copyToField]) {
 					$arrCopiedFields[] = $copyToField;
 
-					$arrUpdate[$copyToField] = tx_datamintsfeuser_utils::currentUserWrap($arrUpdate[$fieldToCopy], $arrCopyToFields[$copyToField . '.']);
+					$arrUpdate[$copyToField] = $this->utils->currentUserWrap($arrUpdate[$fieldToCopy], $arrCopyToFields[$copyToField . '.']);
 				}
 			}
 		}
 
-		return TRUE;
+		return true;
 	}
 
 	/**
 	 * Aktualisiert einen vorhandenen User, anhand des uebergebenen Arrays.
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array mit den bearbeiteten Userdaten.
-	 * @return	array		$arrMode
+	 * @param array $arrUpdate // Call by reference: Das Array mit den bearbeiteten Userdaten.
+	 * @return  array       $arrMode
 	 */
-	public function doUserEdit(&$arrUpdate) {
-		$arrMode = array();
+	public function doUserEdit(array &$arrUpdate): array
+	{
+		$arrMode = [];
 
 		if ($arrUpdate['deleted']) {
 			$this->deleteUser();
@@ -1085,7 +1102,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			// Ausgabe vorbereiten.
 			$arrMode['mode'] = $this->conf['showtype'];
 			$arrMode['submode'] = self::submodeKeyUserdelete;
-			$arrMode['params'] = array('refresh' => GeneralUtility::getIndpEnv('TYPO3_SITE_URL'));
+			$arrMode['params'] = ['refresh' => GeneralUtility::getIndpEnv('TYPO3_SITE_URL')];
 
 			return $arrMode;
 		}
@@ -1094,16 +1111,14 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$this->insertRelationInserts($this->userId, $this->getRelationInserts($arrUpdate));
 
 		// Der User hat seine Daten editiert.
-		$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, $arrUpdate);
-
+	//	$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, $arrUpdate);
+$this->repository->update($this->userId, $arrUpdate);
 		// Destroy sessions if a password field was submitted!
-		if (method_exists('TYPO3\\CMS\\Core\\Session\\SessionManager', 'invalidateAllSessionsByUserId')) {
-			$passwordFields = array_filter(array_map(function ($column) {
-				return in_array('password', GeneralUtility::trimExplode(',', $column['config']['eval'], TRUE));
-			}, $this->feUsersTca['columns']));
+		if (method_exists(SessionManager::class, 'invalidateAllSessionsByUserId')) {
+			$passwordFields = array_filter(array_map(fn(array $column): bool => in_array('password', GeneralUtility::trimExplode(',', $column['config']['eval'], true)), $this->feUsersTca['columns']));
 
 			if (count(array_intersect_key($arrUpdate, $passwordFields)) > 0) {
-				$sessionManager = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\Session\\SessionManager');
+				$sessionManager = GeneralUtility::makeInstance(SessionManager::class);
 				$sessionManager->invalidateAllSessionsByUserId($sessionManager->getSessionBackend('FE'), $this->userId, $this->frontendController->fe_user);
 			}
 		}
@@ -1113,46 +1128,48 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			$extraMarkers = $this->getChangedForMail($arrUpdate, $this->getConfigurationByShowtype());
 
 			if ($this->getConfigurationByShowtype('sendadminmail') && ($this->getConfigurationByShowtype('sendadminmail') != 'onlychanged' || isset($extraMarkers['nothing_changed']))) {
-				$this->sendMail($this->userId, self::showtypeKeyEdit, TRUE, $this->getConfigurationByShowtype(), $extraMarkers);
+				$this->sendMail($this->userId, self::showtypeKeyEdit, true, $this->getConfigurationByShowtype(), $extraMarkers);
 			}
 
 			if ($this->getConfigurationByShowtype('sendusermail') && ($this->getConfigurationByShowtype('sendusermail') != 'onlychanged' || isset($extraMarkers['nothing_changed']))) {
 				// ToDo: Hier vielleicht noch mit Passwort-Generierung?
-				$this->sendMail($this->userId, self::showtypeKeyEdit, FALSE, $this->getConfigurationByShowtype(), $extraMarkers);
+				$this->sendMail($this->userId, self::showtypeKeyEdit, false, $this->getConfigurationByShowtype(), $extraMarkers);
 			}
 		}
 
 		// Ausgabe vorbereiten.
 		$arrMode['mode'] = $this->conf['showtype'];
 		$arrMode['submode'] = self::submodeKeySuccess;
-		$arrMode['params'] = array('refresh' => GeneralUtility::locationHeaderUrl(tx_datamintsfeuser_utils::getTypoLinkUrl($this->frontendController->id)));
+		$arrMode['params'] = ['refresh' => GeneralUtility::locationHeaderUrl($this->utils->getTypoLinkUrl($this->frontendController->id))];
 
 		return $arrMode;
 	}
 
 	/**
 	 * Loescht einen vorhandenen User.
-	 *
-	 * @return	array		$arrMode
 	 */
-	public function deleteUser() {
+	public function deleteUser(): void
+	{
 		if ($this->getConfigurationByShowtype('userdelete')) {
 			// Den User endgueltig loeschen.
-			$this->databaseConnection->exec_DELETEquery('fe_users', 'uid = ' . $this->userId);
+			//$this->databaseConnection->exec_DELETEquery('fe_users', 'uid = ' . $this->userId);
+			$this->repository->delete( $this->userId);
 		} else {
 			// Den User als geloescht markieren.
-			$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, array('tstamp' => time(), 'deleted' => '1'));
+			//$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, ['tstamp' => time(), 'deleted' => '1']);
+			$this->repository->update($this->userId, ['tstamp' => time(), 'deleted' => '1']);
 		}
 	}
 
 	/**
 	 * Erstellt einen User, anhand des uebergebenen Arrays.
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array mit den neuen Userdaten.
-	 * @return	array		$arrMode
+	 * @param array $arrUpdate // Call by reference: Das Array mit den neuen Userdaten.
+	 * @return  array       $arrMode
 	 */
-	public function doUserRegister(&$arrUpdate) {
-		$arrMode = array();
+	public function doUserRegister(array &$arrUpdate): array
+	{
+		$arrMode = [];
 
 		// Standard-Konfigurationen anwenden.
 		$arrUpdate['pid'] = $this->storagePageId;
@@ -1175,10 +1192,10 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$arrRelationInserts = $this->getRelationInserts($arrUpdate);
 
 		// User erstellen.
-		$this->databaseConnection->exec_INSERTquery('fe_users', $arrUpdate);
-
+		//$this->databaseConnection->exec_INSERTquery('fe_users', $arrUpdate);
 		// Userid ermittln und Global definieren!
-		$this->userId = $this->databaseConnection->sql_insert_id();
+		$this->userId = $this->repository->insert($arrUpdate);
+		//$this->userId = $this->databaseConnection->sql_insert_id();
 
 		// ToDo: MM-Relation, Ermittelte MM-Relationen setzen.
 		$this->insertRelationInserts($this->userId, $arrRelationInserts);
@@ -1194,19 +1211,19 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		} else {
 			// Registrierungs E-Mail schicken.
 			if ($this->getConfigurationByShowtype('sendadminmail')) {
-				$this->sendMail($this->userId, 'registration', TRUE, $this->getConfigurationByShowtype());
+				$this->sendMail($this->userId, 'registration', true, $this->getConfigurationByShowtype());
 			}
 
 			if ($this->getConfigurationByShowtype('sendusermail')) {
 				// Erstellt ein neues Passwort, falls Passwort generieren eingestellt ist. Das Passwort kannn dann ueber den Marker "###PASSWORD###" mit der Registrierungsmail gesendet werden.
 				$extraMarkers = $this->getPasswordForMail();
 
-				$this->sendMail($this->userId, 'registration', FALSE, $this->getConfigurationByShowtype(), $extraMarkers);
+				$this->sendMail($this->userId, 'registration', false, $this->getConfigurationByShowtype(), $extraMarkers);
 			}
 
 			$arrMode['mode'] = $this->conf['showtype'];
 			$arrMode['submode'] = self::submodeKeySuccess;
-			$arrMode['params'] = array('autologin' => $this->getConfigurationByShowtype('autologin'));
+			$arrMode['params'] = ['autologin' => $this->getConfigurationByShowtype('autologin')];
 		}
 
 		return $arrMode;
@@ -1215,11 +1232,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ermittelt die neuen Relationen anhand des uebergebenen Arrays.
 	 *
-	 * @param	array		$arrUpdate // Call by reference: Das Array in dem die Anzahl der Relationen aktualisiert werden.
-	 * @return	array		$arrInserts
+	 * @param array $arrUpdate // Call by reference: Das Array in dem die Anzahl der Relationen aktualisiert werden.
+	 * @return  array       $arrInserts
 	 */
-	public function getRelationInserts(&$arrUpdate) {
-		$arrInserts = array();
+	public function getRelationInserts(array &$arrUpdate): array
+	{
+		$arrInserts = [];
 
 		foreach (array_keys($arrUpdate) as $fieldName) {
 			if (!is_array($this->feUsersTca['columns'][$fieldName])) {
@@ -1227,8 +1245,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			}
 
 			$fieldConfig = $this->feUsersTca['columns'][$fieldName]['config'];
+			if (!$fieldConfig['MM']) {
+				continue;
+			}
 
-			if (!$fieldConfig['MM'] || !($fieldConfig['type'] == 'select' || ($fieldConfig['type'] == 'group' && $fieldConfig['internal_type'] == 'db'))) {
+			if ($fieldConfig['type'] != 'select' && !($fieldConfig['type'] == 'group' && $fieldConfig['internal_type'] == 'db')) {
 				continue;
 			}
 
@@ -1236,19 +1257,9 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 			$arrUpdate[$fieldName] = count($arrRelations);
 
-			$arrInserts[$fieldConfig['MM']] = array_merge(($fieldConfig['MM_match_fields'] && $fieldConfig['MM_match_fields']['tablenames'] == 'fe_users') ? array(
-				'user_field' => 'uid_foreign',
-				'record_field' => 'uid_local'
-			) : array(
-				'user_field' => 'uid_local',
-				'record_field' => 'uid_foreign'
-			), array(
-				'records' => array(),
-				'match_fields' => (array)$fieldConfig['MM_match_fields'],
-				'insert_fields' => (array)$fieldConfig['MM_insert_fields']
-			));
+			$arrInserts[$fieldConfig['MM']] = array_merge(($fieldConfig['MM_match_fields'] && $fieldConfig['MM_match_fields']['tablenames'] == 'fe_users') ? ['user_field' => 'uid_foreign', 'record_field' => 'uid_local'] : ['user_field' => 'uid_local', 'record_field' => 'uid_foreign'], ['records' => [], 'match_fields' => (array)$fieldConfig['MM_match_fields'], 'insert_fields' => (array)$fieldConfig['MM_insert_fields']]);
 
-			foreach($arrRelations as $relation) {
+			foreach ($arrRelations as $relation) {
 				$arrInserts[$fieldConfig['MM']]['records'][] = intval(($dividerPosition = strripos($relation, '_')) ? substr($relation, $dividerPosition + 1) : $relation);
 			}
 		}
@@ -1258,16 +1269,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 	/**
 	 * Ersetzt die aktuellen Relationen mit den neuen hier uebergebenen Relationen.
-	 *
-	 * @param	array		$userId
-	 * @param	array		$arrInserts
-	 * @return	void
 	 */
-	public function insertRelationInserts($userId, $arrInserts = array()) {
-		$userId = intval($userId);
-
+	public function insertRelationInserts(int $userId, array $arrInserts = []): void
+	{
 		foreach ($arrInserts as $foreignTable => $arrInsert) {
-			$rows = array();
+			$rows = [];
 
 			$sorting = 1;
 
@@ -1278,25 +1284,35 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					continue;
 				}
 
-				$rows[] = array_merge($arrInsert['match_fields'], $arrInsert['insert_fields'], array(
-					'sorting' => $sorting,
-					$arrInsert['user_field'] => $userId,
-					$arrInsert['record_field'] => $recordId
-				));
+				$rows[] = array_merge($arrInsert['match_fields'], $arrInsert['insert_fields'], ['sorting' => $sorting, $arrInsert['user_field'] => $userId, $arrInsert['record_field'] => $recordId]);
 
 				$sorting++;
 			}
+			$queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($foreignTable);
+			$predicates = [];
+			$predicates[] = $queryBuilder->expr()->eq(
+				$arrInsert['user_field'], $userId
+			);
+			//$where = $arrInsert['user_field'] . ' = ' . $userId;
 
-			$where = $arrInsert['user_field'] . ' = ' . $userId;
+			foreach ($arrInsert['match_fields'] as $field => $value) {
+				//$where .= ' AND ' . $field . ' = "' . $value . '"';
 
-			foreach($arrInsert['match_fields'] as $field => $value) {
-				$where .= ' AND ' . $field . ' = "' . $value . '"';
+				$predicates[] = $queryBuilder->expr()->eq(
+					$field, $queryBuilder->quote($value)
+				);
+
 			}
-
-			$this->databaseConnection->exec_DELETEquery($foreignTable, $where);
+			$queryBuilder->delete($foreignTable)->where(
+				...$predicates
+			)->executeStatement();
+			//$this->databaseConnection->exec_DELETEquery($foreignTable, $where);
 
 			if (count($rows) > 0) {
-				$this->databaseConnection->exec_INSERTmultipleRows($foreignTable, array_keys($rows[0]), $rows);
+				$queryBuilder->resetQueryParts();
+				$queryBuilder->insert($foreignTable)->values($rows);
+				//$this->databaseConnection->exec_INSERTmultipleRows($foreignTable, array_keys($rows[0]), $rows);
+
 			}
 		}
 	}
@@ -1305,14 +1321,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	 * Erledigt allen Output der nichts mit dem eigendlichen Formular zu tun hat.
 	 * Fuer besondere Faelle kann hier eine Ausnahme, oder zusaetzliche Konfigurationen gesetzt werden.
 	 *
-	 * @param	string		$mode
-	 * @param	string		$submode
-	 * @param	array		$params
-	 * @return	string		$label
+	 * @return  string      $label
 	 */
-	public function showOutputRedirect($mode, $submode = '', $params = array()) {
-		$redirect = TRUE;
-		$autologin = FALSE;
+	public function showOutputRedirect(string $mode, string $submode = '', array $params = []): string
+	{
+		$redirect = true;
+		$autologin = false;
 
 		$labelKey = $mode;
 		$redirectKey = $mode;
@@ -1327,16 +1341,15 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		}
 
 		// Label ermitteln
-		$label = $this->getLabel($labelKey, FALSE);
+		$label = $this->getLabel($labelKey, false);
 
 		// Zusaetzliche Konfigurationen die gesetzt werden, bevor die Ausgabe oder der Redirect ausgefuehrt werden.
 		switch ($mode) {
-
 			case self::showtypeKeyRegister:
 			case 'doubleoptin':
 				// Login vormerken.
 				if ($params['autologin']) {
-					$autologin = TRUE;
+					$autologin = true;
 				}
 
 				break;
@@ -1348,24 +1361,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				}
 
 				break;
-
 		}
 
 		// Hook bevor irgendeine Ausgabe oder eine Weiterleitung stattfindet.
 		if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['showOutputRedirect'])) {
-			$_params = array(
-					'variables' => array(
-							'mode' => $mode,
-							'submode' => $submode,
-							'params' => $params
-						),
-					'parameters' => array(
-							'label' => &$label,
-							'redirect' => &$redirect,
-							'autologin' => &$autologin,
-							'redirectKey' => &$redirectKey
-						)
-				);
+			$_params = ['variables' => ['mode' => $mode, 'submode' => $submode, 'params' => $params], 'parameters' => ['label' => &$label, 'redirect' => &$redirect, 'autologin' => &$autologin, 'redirectKey' => &$redirectKey]];
 
 			foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['showOutputRedirect'] as $_funcRef) {
 				GeneralUtility::callUserFunction($_funcRef, $_params, $this);
@@ -1374,12 +1374,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		// Login vollziehen, falls eine Redirectseite angegeben ist, wird dorthin automatisch umgeleitet.
 		if ($autologin) {
-			tx_datamintsfeuser_utils::userAutoLogin($this->userId, $this->conf['redirect.'][$redirectKey], $this->getHiddenParamsArray());
+			$this->utils->userAutoLogin($this->userId, $this->conf['redirect.'][$redirectKey], $this->getHiddenParamsArray());
 		}
 
 		// Redirect vollziehen, falls angegeben!
-		if ($redirect && $this->conf['redirect.'][$redirectKey]) {
-			tx_datamintsfeuser_utils::userRedirect($this->conf['redirect.'][$redirectKey], $this->getHiddenParamsArray());
+		if ($this->conf['redirect.'][$redirectKey]) {
+			$this->utils->userRedirect($this->conf['redirect.'][$redirectKey], $this->getHiddenParamsArray());
 		}
 
 		return '<div class="' . $mode . ' ' . $submode . '">' . $label . '</div>';
@@ -1388,10 +1388,10 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Sendet die Aktivierungsmail an den uebergebenen User.
 	 *
-	 * @param	integer		$userId
-	 * @return	void
+	 * @param integer $userId
 	 */
-	public function sendActivationMail($userId = 0) {
+	public function sendActivationMail($userId = 0): void
+	{
 		$userId = intval($userId);
 
 		if (!$userId) {
@@ -1399,11 +1399,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		}
 
 		// Neuen Timestamp setzten, damit jede Aktivierungsmail einen anderen Hash hat.
-		$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $userId, array('tstamp' => time()));
-
+		//$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $userId, ['tstamp' => time()]);
+$this->repository->update($userId, ['tstamp' => time()]);
 		// Userdaten ermitteln.
-		$res = $this->databaseConnection->exec_SELECTquery('uid, tstamp, tx_datamintsfeuser_approval_level', 'fe_users', 'uid = ' . $userId, '', '', '1');
-		$row = $this->databaseConnection->sql_fetch_assoc($res);
+		$row = $this->repository->findOneByUid($userId);
+		//$res = $this->databaseConnection->exec_SELECTquery('uid, tstamp, tx_datamintsfeuser_approval_level', 'fe_users', 'uid = ' . $userId, '', '', '1');
+		//$row = $this->databaseConnection->sql_fetch_assoc($res);
 
 		// Genehmigungstypen aufsteigend sortiert ermitteln. Das ist noetig um das Level dem richtigen Typ zuordnen zu koennen.
 		// Beispiel: approvalcheck = ,doubleoptin,adminapproval => beim exploden kommt dann ein leeres Arrayelement herraus, das nach dem entfernen einen leeren Platz uebrig laesst.
@@ -1413,9 +1414,9 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$approvalType = $arrApprovalTypes[count($arrApprovalTypes) - $row['tx_datamintsfeuser_approval_level']];
 
 		// Mail vorbereiten.
-		$urlParameters = array($this->prefixId => array($this->contentId => array(self::submitparameterKeyMode => self::modeKeyApprovalcheck, 'uid' => $userId)));
-		$approvalParameters = array($this->prefixId => array($this->contentId => array(self::submitparameterKeyHash => md5('approval' . $userId . $row['tstamp'] . $this->extConf['encryptionKey']))));
-		$disapprovalParameters = array($this->prefixId => array($this->contentId => array(self::submitparameterKeyHash => md5('disapproval' . $userId . $row['tstamp'] . $this->extConf['encryptionKey']))));
+		$urlParameters = [$this->prefixId => [$this->contentId => [self::submitparameterKeyMode => self::modeKeyApprovalcheck, 'uid' => $userId]]];
+		$approvalParameters = [$this->prefixId => [$this->contentId => [self::submitparameterKeyHash => md5('approval' . $userId . $row['tstamp'] . $this->extConf['encryptionKey'])]]];
+		$disapprovalParameters = [$this->prefixId => [$this->contentId => [self::submitparameterKeyHash => md5('disapproval' . $userId . $row['tstamp'] . $this->extConf['encryptionKey'])]]];
 
 		// Fuegt die hidden Params mit den Approvalcheck Parametern zusammen.
 		$tmpParameters = $this->getHiddenParamsArray();
@@ -1428,10 +1429,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		ArrayUtility::mergeRecursiveWithOverrule($tmpApprovalParameters, $approvalParameters);
 		ArrayUtility::mergeRecursiveWithOverrule($tmpDisapprovalParameters, $disapprovalParameters);
 
-		$extraMarkers = array(
-			'approvallink' => GeneralUtility::locationHeaderUrl(tx_datamintsfeuser_utils::escapeBrackets($this->pi_getPageLink($this->frontendController->id, '', $tmpApprovalParameters))),
-			'disapprovallink' => GeneralUtility::locationHeaderUrl(tx_datamintsfeuser_utils::escapeBrackets($this->pi_getPageLink($this->frontendController->id, '', $tmpDisapprovalParameters)))
-		);
+		$extraMarkers = ['approvallink' => GeneralUtility::locationHeaderUrl($this->utils->escapeBrackets($this->pi_getPageLink($this->frontendController->id, '', $tmpApprovalParameters))), 'disapprovallink' => GeneralUtility::locationHeaderUrl($this->utils->escapeBrackets($this->pi_getPageLink($this->frontendController->id, '', $tmpDisapprovalParameters)))];
 
 		// E-Mail senden.
 		$this->sendMail($userId, $approvalType, $this->isAdminApprovalType($approvalType), $this->getConfigurationByShowtype(), $extraMarkers);
@@ -1442,13 +1440,13 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 	/**
 	 * Ueberprueft ob die Linkbestaetigung gueltig ist und aktiviert gegebenenfalls den User.
-	 *
-	 * @return	string
 	 */
-	public function doApprovalCheck() {
+	public function doApprovalCheck(): string
+	{
 		// Userdaten ermitteln.
-		$res = $this->databaseConnection->exec_SELECTquery('uid, tstamp, tx_datamintsfeuser_approval_level', 'fe_users', 'uid = ' . $this->userId . ' AND pid = ' . $this->storagePageId, '', '', '1');
-		$row = $this->databaseConnection->sql_fetch_assoc($res);
+		//$res = $this->databaseConnection->exec_SELECTquery('uid, tstamp, tx_datamintsfeuser_approval_level', 'fe_users', 'uid = ' . $this->userId . ' AND pid = ' . $this->storagePageId, '', '', '1');
+		$row = $this->repository->findOneByUid($this->userId);
+		//$row = $this->databaseConnection->sql_fetch_assoc($res);
 
 		// Genehmigungstyp ermitteln um die richtige E-Mail zu senden, bzw. die richtige Ausgabe zu ermitteln.
 		$arrApprovalTypes = array_slice($this->getApprovalTypes(), -$row['tx_datamintsfeuser_approval_level']);
@@ -1464,7 +1462,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		// Ausgabe vorbereiten.
 		$mode = $approvalType;
 		$submode = $submodePrefix . self::submodeKeyFailure;
-		$params = array();
+		$params = [];
 
 		// Daten vorbereiten.
 		$hashApproval = md5('approval' . $row['uid'] . $row['tstamp'] . $this->extConf['encryptionKey']);
@@ -1473,7 +1471,8 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		// Wenn der Approval-Hash richtig ist, des letzte Genehmigungslevel aber noch nicht erreicht ist.
 		if ($this->piVars[$this->contentId][self::submitparameterKeyHash] == $hashApproval && $row['tx_datamintsfeuser_approval_level'] > 1) {
 			// Genehmigungslevel updaten.
-			$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, array('tstamp' => time(), 'tx_datamintsfeuser_approval_level' => $row['tx_datamintsfeuser_approval_level'] - 1));
+			$this->repository->update($this->userId,['tstamp' => time(), 'tx_datamintsfeuser_approval_level' => $row['tx_datamintsfeuser_approval_level'] - 1] );
+			//$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, ['tstamp' => time(), 'tx_datamintsfeuser_approval_level' => $row['tx_datamintsfeuser_approval_level'] - 1]);
 
 			// Aktivierungsmail schicken.
 			$this->sendActivationMail();
@@ -1485,34 +1484,34 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		// Wenn der Approval-Hash richtig ist, und das letzte Genehmigungslevel erreicht ist.
 		if ($this->piVars[$this->contentId][self::submitparameterKeyHash] == $hashApproval && $row['tx_datamintsfeuser_approval_level'] == 1) {
 			// User aktivieren.
-			$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, array('tstamp' => time(), 'disable' => '0', 'tx_datamintsfeuser_approval_level' => '0'));
-
+			//$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, ['tstamp' => time(), 'disable' => '0', 'tx_datamintsfeuser_approval_level' => '0']);
+			$this->repository->update($this->userId,['tstamp' => time(), 'disable' => '0', 'tx_datamintsfeuser_approval_level' => '0']);
 			// Registrierungs E-Mail schicken.
 			if ($this->getConfigurationByShowtype('sendadminmail')) {
-				$this->sendMail($this->userId, 'registration', TRUE, $this->getConfigurationByShowtype());
+				$this->sendMail($this->userId, 'registration', true, $this->getConfigurationByShowtype());
 			}
 
 			if ($this->getConfigurationByShowtype('sendusermail')) {
 				// Erstellt ein neues Passwort, falls Passwort generieren eingestellt ist. Das Passwort kannn dann ueber den Marker "###PASSWORD###" mit der Registrierungsmail gesendet werden.
 				$extraMarkers = $this->getPasswordForMail();
 
-				$this->sendMail($this->userId, 'registration', FALSE, $this->getConfigurationByShowtype(), $extraMarkers);
+				$this->sendMail($this->userId, 'registration', false, $this->getConfigurationByShowtype(), $extraMarkers);
 			}
 
 			// Ausgabe vorbereiten.
 			$submode = self::submodeKeySuccess;
-			$params = array('autologin' => $this->getConfigurationByShowtype('autologin'));
+			$params = ['autologin' => $this->getConfigurationByShowtype('autologin')];
 		}
 
 		// Wenn der Disapproval-Hash richtig ist.
 		if ($this->piVars[$this->contentId][self::submitparameterKeyHash] == $hashDisapproval) {
 			// Wenn der User deaktiviert wird, eine Account-Abgelehnt Mail senden (wenn User ablehnt an den Administrator, oder andersrum).
 			if ($this->getConfigurationByShowtype('sendadminmail') && !$this->isAdminApprovalType($approvalType) && !$this->getConfigurationByShowtype('userdelete')) {
-				$this->sendMail($this->userId, 'disapproval', TRUE, $this->getConfigurationByShowtype());
+				$this->sendMail($this->userId, 'disapproval', true, $this->getConfigurationByShowtype());
 			}
 
 			if ($this->getConfigurationByShowtype('sendusermail') && $this->isAdminApprovalType($approvalType)) {
-				$this->sendMail($this->userId, 'disapproval', FALSE, $this->getConfigurationByShowtype());
+				$this->sendMail($this->userId, 'disapproval', false, $this->getConfigurationByShowtype());
 			}
 
 			// User erst loeschen nachdem die Mail an den User gesendet wurde, falls der Admin diesen ablehnt.
@@ -1528,47 +1527,47 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ermittelt alle Genehmigungstypen.
 	 * Wird benoetigt um das Level dem richtigen Typ zuordnen zu koennen.
-	 *
-	 * @return	array
 	 */
-	public function getApprovalTypes() {
+	public function getApprovalTypes(): array
+	{
 		// Beispiel: approvalcheck = ,doubleoptin,adminapproval => Beim Exploden kommt dann ein leeres Arrayelement heraus, das nach dem entfernen einen leeren Platz uebrig lassen wuerde.
-		return array_unique(array_values(GeneralUtility::trimExplode(',', $this->getConfigurationByShowtype('approvalcheck'), TRUE)));
+		return array_unique(array_values(GeneralUtility::trimExplode(',', (string)$this->getConfigurationByShowtype('approvalcheck'), true)));
 	}
 
 	/**
 	 * Setzt einen Cookie fuer den neu angelegten Account, falls dieser aktiviert werden muss.
 	 *
-	 * @param	integer		$userId
-	 * @return	void
+	 * @param integer $userId
 	 */
-	public function setNotActivatedCookie($userId) {
+	public function setNotActivatedCookie(int $userId): void
+	{
 		$arrNotActivated = $this->getNotActivatedUserArray();
 		$arrNotActivated[] = intval($userId);
 
-		setcookie($this->prefixId . '[not_activated]', implode(',', $arrNotActivated), time() + 60 * 60 * 24 * 30);
+		setcookie($this->prefixId . '[not_activated]', implode(',', $arrNotActivated), ['expires' => time() + 60 * 60 * 24 * 30]);
 	}
 
 	/**
 	 * Ermittelt alle nicht aktivierten Accounts des Users.
 	 *
-	 * @param	array		$arrNotActivated
-	 * @return	array		$arrNotActivatedCleaned
+	 * @param array $arrNotActivated
+	 * @return  array       $arrNotActivatedCleaned
 	 */
-	public function getNotActivatedUserArray($arrNotActivated = array()) {
-		$arrNotActivatedCleaned = array();
+	public function getNotActivatedUserArray(array $arrNotActivated = []): array
+	{
+		$arrNotActivatedCleaned = [];
 
 		// Nicht aktivierte User ueber den Cookie ermitteln, und vor Missbrauch schuetzen.
 		if (!$arrNotActivated) {
-			$arrNotActivated = array_unique(array_map('intval', GeneralUtility::trimExplode(',', $_COOKIE[$this->prefixId]['not_activated'], TRUE)));
+			$arrNotActivated = array_unique(array_map('intval', GeneralUtility::trimExplode(',', $_COOKIE[$this->prefixId]['not_activated'], true)));
 		}
 
 		// Wenn nach dem reinigen noch User uebrig bleiben.
 		if (count($arrNotActivated) > 0) {
 			// Herrausgefundene User ermitteln und ueberpruefen, ob die User mitlerweile schon aktiviert wurden.
-			$res = $this->databaseConnection->exec_SELECTquery('uid', 'fe_users', 'uid IN(' . implode(',', $arrNotActivated) . ') AND disable = 1 AND deleted = 0');
-
-			while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
+//			$res = $this->databaseConnection->exec_SELECTquery('uid', 'fe_users', 'uid IN(' . implode(',', $arrNotActivated) . ') AND disable = 1 AND deleted = 0');
+$rows = $this->repository->findByUidsAndDisable($arrNotActivated, 1);
+			foreach ($rows as $row) {
 				$arrNotActivatedCleaned[] = $row['uid'];
 			}
 		}
@@ -1579,36 +1578,35 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Sendet die E-Mails mit dem uebergebenen Template und falls angegeben, auch mit den extra Markern.
 	 *
-	 * @param	integer		$userId
-	 * @param	string		$templatePart
-	 * @param	boolean		$adminMail
-	 * @param	array		$config
-	 * @param	array		$extraMarkers
-	 * @param	array		$extraSuparts
-	 * @return	void
+	 * @param integer $userId
+	 * @param boolean $adminMail
+	 * @param array $config
+	 * @param array $extraMarkers
+	 * @param array $extraSuparts
 	 */
-	public function sendMail($userId, $templatePart, $adminMail, $config, $extraMarkers = array(), $extraSuparts = array()) {
+	public function sendMail(int $userId, string $templatePart, bool $adminMail, array $config, array $extraMarkers = [], array $extraSuparts = []): void
+	{
 		// Userdaten ermitteln.
 		if ($this->userId) {
 			$row = $this->getValuesForMail();
 		} else {
-			$res = $this->databaseConnection->exec_SELECTquery('*', 'fe_users', 'uid = ' . intval($userId), '', '', '1');
-			$row = $this->databaseConnection->sql_fetch_assoc($res);
+		//	$res = $this->databaseConnection->exec_SELECTquery('*', 'fe_users', 'uid = ' . intval($userId), '', '', '1');
+
+		//	$row = $this->databaseConnection->sql_fetch_assoc($res);
+
+$row = $this->repository->findOneByUid($userId);
 		}
 
-		$arrSpecialMarkers = array(
-			'siteurl' => GeneralUtility::getIndpEnv('TYPO3_SITE_URL'),
-			'requesturl' => GeneralUtility::getIndpEnv('TYPO3_REQUEST_URL')
-		);
+		$arrSpecialMarkers = ['siteurl' => GeneralUtility::getIndpEnv('TYPO3_SITE_URL'), 'requesturl' => GeneralUtility::getIndpEnv('TYPO3_REQUEST_URL')];
 
 		$markerArray = array_merge($arrSpecialMarkers, (array)$config, (array)$row, (array)$extraMarkers);
 
 		foreach ($markerArray as $key => $val) {
-			$markerArray['label_' . $key] = $this->getLabel($key, FALSE);
+			$markerArray['label_' . $key] = $this->getLabel($key, false);
 
-//			if (!tx_datamintsfeuser_utils::checkUtf8($val)) {
-//				$markerArray[$key] = utf8_encode($val);
-//			}
+			//          if (!$this->utils->checkUtf8($val)) {
+			//              $markerArray[$key] = utf8_encode($val);
+			//          }
 		}
 
 		// Absender vorbereiten.
@@ -1638,10 +1636,10 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$content = $this->templateService->substituteSubpart($content, '###SUBJECT###', '');
 
 		// Body zusammensetzen.
-		$body = $this->getTemplateSubpart('body', array_merge($markerArray, array('content' => $content)), $config);
+		$body = $this->getTemplateSubpart('body', array_merge($markerArray, ['content' => $content]), $config);
 
 		// Header ermitteln und Betreff ersetzten (Title-Tag).
-		$header = $this->getTemplateSubpart('header', array_merge($markerArray, array('subject' => $subject)), $config);
+		$header = $this->getTemplateSubpart('header', array_merge($markerArray, ['subject' => $subject]), $config);
 
 		// Extra Subparts ersetzten.
 		foreach ($extraSuparts as $key => $val) {
@@ -1650,26 +1648,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		// Hook um die E-Mail zu aendern.
 		if (is_array($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['sendMail'])) {
-			$_params = array(
-					'variables' => array(
-							'userId' => $userId,
-							'templatePart' => $templatePart,
-							'adminMail' => $adminMail,
-							'config' => $config,
-							'markerArray' => $markerArray
-						),
-					'parameters' => array(
-							'body' => &$body,
-							'header' => &$header,
-							'subject' => &$subject,
-							'toName' => &$toName,
-							'toEmail' => &$toEmail,
-							'fromName' => &$fromName,
-							'fromEmail' => &$fromEmail,
-							'replytoName' => &$replytoName,
-							'replytoEmail' => &$replytoEmail
-						)
-				);
+			$_params = ['variables' => ['userId' => $userId, 'templatePart' => $templatePart, 'adminMail' => $adminMail, 'config' => $config, 'markerArray' => $markerArray], 'parameters' => ['body' => &$body, 'header' => &$header, 'subject' => &$subject, 'toName' => &$toName, 'toEmail' => &$toEmail, 'fromName' => &$fromName, 'fromEmail' => &$fromEmail, 'replytoName' => &$replytoName, 'replytoEmail' => &$replytoEmail]];
 
 			foreach ($GLOBALS['TYPO3_CONF_VARS']['EXTCONF'][$this->extKey]['sendMail'] as $_funcRef) {
 				GeneralUtility::callUserFunction($_funcRef, $_params, $this);
@@ -1678,19 +1657,18 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		// Verschicke E-Mail.
 		if ($toEmail && $subject && $body) {
-
 			$bodyHtml = '<html>' . $header . $body . '</html>';
 			$bodyPlain = trim(strip_tags($body));
 
 			if ($config['mailtype'] == 'html') {
-				$bodyPlain = tx_datamintsfeuser_utils::convertHtmlEmailToPlain($bodyHtml);
+				$bodyPlain = $this->utils->convertHtmlEmailToPlain($bodyHtml);
 			}
 
-			$mail = GeneralUtility::makeInstance('TYPO3\\CMS\\Core\\Mail\\MailMessage');
+			$mail = GeneralUtility::makeInstance(MailMessage::class);
 			$mail->setSubject($subject);
-			$mail->setFrom(array($fromEmail => $fromName));
-			$mail->setReplyTo(array($replytoEmail => $replytoName));
-			$mail->setTo(array($toEmail => $toName));
+			$mail->setFrom([$fromEmail => $fromName]);
+			$mail->setReplyTo([$replytoEmail => $replytoName]);
+			$mail->setTo([$toEmail => $toName]);
 			$mail->html($bodyPlain);
 
 			if ($config['mailtype'] == 'html') {
@@ -1705,46 +1683,43 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ueberprueft anhand des Genehmigungstyps ob die Mail eine Adminmail oder eine Usermail ist. Wenn 'admin' im Namen des Genehmigungstyps steht, dann ist die Mail eine Adminmail.
 	 *
-	 * @param	string		$approvalType
-	 * @return	boolean
+	 * @param string $approvalType
 	 */
-	public function isAdminApprovalType($approvalType) {
-		return (strpos($approvalType, 'admin') === FALSE) ? FALSE : TRUE;
+	public function isAdminApprovalType($approvalType): bool
+	{
+		return str_contains($approvalType, 'admin');
 	}
 
 	/**
 	 * Holt einen Subpart des Standardtemplates und ersetzt uebergeben Marker.
-	 *
-	 * @param	string		$templatePart
-	 * @param	array		$markerArray
-	 * @param	array		$config
-	 * @return	string		$template
 	 */
-	public function getTemplateSubpart($templatePart, $markerArray = array(), $config = array()) {
+	public function getTemplateSubpart(string $templatePart, array $markerArray = [], array $config = []): string
+	{
 		// Template holen.
 		$templateFile = $config['emailtemplate'];
 
 		if (!$templateFile) {
-			$templateFile = 'EXT:' . $this->extKey . '/res/datamints_feuser_mail.html';
+			$templateFile = 'EXT:' . $this->extKey . '/Resources/Private/datamints_feuser_mail.html';
 		}
 
 		// Template laden.
-		$template = tx_datamintsfeuser_utils::getTemplateSubpart($templateFile, $templatePart, $markerArray);
-
-		return $template;
+		return $this->utils->getTemplateSubpart($templateFile, $templatePart, $markerArray);
 	}
 
 	/**
 	 * Ermittlet alle Userdaten und schreibt diese in ein Markerarray.
 	 *
-	 * @return	array		$extraMarkers
+	 * @return  array       $extraMarkers
+	 * @throws \Doctrine\DBAL\Exception
 	 */
-	public function getValuesForMail() {
-		$extraMarkers = array();
+	public function getValuesForMail(): array
+	{
+		$extraMarkers = [];
 
 		// Userdaten ermitteln.
-		$res = $this->databaseConnection->exec_SELECTquery('*', 'fe_users', 'uid = ' . $this->userId, '', '', '1');
-		$row = $this->databaseConnection->sql_fetch_assoc($res);
+		$row = $this->repository->findOneByUid($this->userId);
+		//$res = $this->databaseConnection->exec_SELECTquery('*', 'fe_users', 'uid = ' . $this->userId, '', '', '1');
+		//$row = $this->databaseConnection->sql_fetch_assoc($res);
 
 		// ToDo: MM-Relation, Merge MM-Values erweitern.
 		$arrCurrentData = $this->mergeRelationValues($this->userId, $row);
@@ -1757,36 +1732,33 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			// Wenn das Feld existiert.
 			if ($this->feUsersTca['columns'][$fieldName]) {
 				switch ($fieldConfig['type']) {
-
 					case 'input':
-						$arrFieldConfigEval = GeneralUtility::trimExplode(',', $fieldConfig['eval'], TRUE);
+						$arrFieldConfigEval = GeneralUtility::trimExplode(',', $fieldConfig['eval'], true);
 
 						// Datumsfeld und Datumzeitfeld.
-						if (in_array('date', $arrFieldConfigEval) || in_array('datetime', $arrFieldConfigEval)) {
-							// Nur als Datum formatieren, wenn der aktuelle Wert ein Timestamp ist.
-							if ($rawValue && is_numeric($rawValue)) {
-								// Timestamp zu "tt.mm.jjjj" machen.
-								if (in_array('date', $arrFieldConfigEval)) {
-									$value = date($this->conf['format.']['date'], $rawValue);
-								}
+						// Nur als Datum formatieren, wenn der aktuelle Wert ein Timestamp ist.
+						if ((in_array('date', $arrFieldConfigEval) || in_array('datetime', $arrFieldConfigEval)) && ($rawValue && is_numeric($rawValue))) {
+							// Timestamp zu "tt.mm.jjjj" machen.
+							if (in_array('date', $arrFieldConfigEval)) {
+								$value = date($this->conf['format.']['date'], $rawValue);
+							}
 
-								// Timestamp zu "hh:mm tt.mm.jjjj" machen.
-								if (in_array('datetime', $arrFieldConfigEval)) {
-									$value = date($this->conf['format.']['datetime'], $rawValue);
-								}
+							// Timestamp zu "hh:mm tt.mm.jjjj" machen.
+							if (in_array('datetime', $arrFieldConfigEval)) {
+								$value = date($this->conf['format.']['datetime'], $rawValue);
 							}
 						}
 
 						// Passwordfeld.
 						if (in_array('password', $arrFieldConfigEval)) {
-							$value = $this->getLabel('password_placeholder', FALSE);
+							$value = $this->getLabel('password_placeholder', false);
 						}
 
 						break;
 
 					case 'check':
 						if (count((array)$fieldConfig['items']) > 1) {
-							$value = array();
+							$value = [];
 
 							if (!is_array($rawValue)) {
 								$rawValue = str_split(strrev(decbin($rawValue)));
@@ -1794,13 +1766,13 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 							foreach (array_values($fieldConfig['items']) as $key => $checkItem) {
 								if ($rawValue[$key]) {
-									$value[] = $this->getLabel($checkItem[0], FALSE);
+									$value[] = $this->getLabel($checkItem[0], false);
 								}
 							}
 
 							$value = implode(', ', $value);
 						} else {
-							$value = ($rawValue) ? $this->getLabel('check_yes', FALSE) : $this->getLabel('check_no', FALSE);
+							$value = ($rawValue) ? $this->getLabel('check_yes', false) : $this->getLabel('check_no', false);
 						}
 
 						break;
@@ -1811,7 +1783,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 						if (is_array($fieldConfig['items'])) {
 							foreach (array_values($fieldConfig['items']) as $radioItem) {
 								if ($rawValue == $radioItem[1]) {
-									$value = $this->getLabel($radioItem[0], FALSE);
+									$value = $this->getLabel($radioItem[0], false);
 								}
 							}
 						}
@@ -1819,16 +1791,16 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 						break;
 
 					case 'select':
-						$value = array();
+						$value = [];
 
 						if (!is_array($rawValue)) {
-							$rawValue = GeneralUtility::trimExplode(',', $rawValue, TRUE);
+							$rawValue = GeneralUtility::trimExplode(',', $rawValue, true);
 						}
 
 						if (is_array($fieldConfig['items'])) {
-							foreach (array_values($fieldConfig['items']) as $selectItem) {
+							foreach ($fieldConfig['items'] as $selectItem) {
 								if (in_array($selectItem[1], $rawValue)) {
-									$value[] = $this->getLabel($selectItem[0], FALSE);
+									$value[] = $this->getLabel($selectItem[0], false);
 								}
 							}
 						}
@@ -1839,15 +1811,23 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 							$labelFieldName = $this->getTableLabelFieldName($table);
 
 							// Select-Items aus DB holen.
-							$select = 'uid, ' . $labelFieldName;
+							//$select = 'uid, ' . $labelFieldName;
 
 							// Falls kein AND, OR, GROUP BY, ORDER BY oder LIMIT am Anfang des where steht, ein AND voranstellen!
-							$options = strtolower(substr(trim($fieldConfig['foreign_table_where']), 0, 3));
-							$options = trim((!$options || $options == 'and' || $options == 'or ' || $options == 'gro' || $options == 'ord' || $options == 'lim') ? $fieldConfig['foreign_table_where'] : 'AND ' . $fieldConfig['foreign_table_where']);
+							$options = strtolower(substr(trim((string)$fieldConfig['foreign_table_where']), 0, 3));
+							$options = trim((!$options || $options === 'and' || $options === 'or ' || $options === 'gro' || $options === 'ord' || $options === 'lim') ? $fieldConfig['foreign_table_where'] : 'AND ' . $fieldConfig['foreign_table_where']);
+							$queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+							$result = $queryBuilder->select('uid', $labelFieldName)
+								->from($table)
+								->where(
+									'1=1 ' . $options
+								)->executeQuery();
 
-							$res = $this->databaseConnection->exec_SELECTquery($select, $table, '1 ' . $this->pageRepository->enableFields($table) . ' ' . $options);
 
-							while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
+
+							//$res = $this->databaseConnection->exec_SELECTquery($select, $table, '1 ' . $this->pageRepository->enableFields($table) . ' ' . $options);
+
+							while ($row = $result->fetchAssociative()) {
 								if (in_array($row['uid'], $rawValue)) {
 									$value[] = $row[$labelFieldName];
 								}
@@ -1860,10 +1840,10 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 					case 'group':
 						if ($fieldConfig['internal_type'] == 'db' && is_array($rawValue)) {
-							$value = array();
+							$value = [];
 
-							$arrItems = array();
-							$arrAllowed = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], TRUE);
+							$arrItems = [];
+							$arrAllowed = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], true);
 
 							foreach ($arrAllowed as $table) {
 								if (!$GLOBALS['TCA'][$table]) {
@@ -1872,15 +1852,18 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 								$labelFieldName = $this->getTableLabelFieldName($table);
 
-								$res = $this->databaseConnection->exec_SELECTquery('uid, ' . $labelFieldName, $table, '1 ' . $this->pageRepository->enableFields($table));
+								$queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+								$result = $queryBuilder->select('uid', $labelFieldName)->from($table)->executeQuery();
 
-								while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
+								//$res = $this->databaseConnection->exec_SELECTquery('uid, ' . $labelFieldName, $table, '1 ' . $this->pageRepository->enableFields($table));
+
+								while ($row = $result->fetchAssociative()) {
 									$arrItems[$table . '_' . $row['uid']] = $row[$labelFieldName];
 								}
 							}
 
 							foreach ($arrItems as $key => $label) {
-								if (array_intersect(array($key, substr($key, strripos($key, '_') + 1)), $rawValue)) {
+								if (array_intersect([$key, substr($key, strripos($key, '_') + 1)], $rawValue)) {
 									$value[] = $label;
 								}
 							}
@@ -1889,7 +1872,6 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 						}
 
 						break;
-
 				}
 			}
 
@@ -1903,27 +1885,27 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ermittlet alle geaenderten Userdaten und schreibt diese in ein Markerarray.
 	 *
-	 * @param	array		$arrNewData
-	 * @param	array		$config
-	 * @return	array		$extraMarkers
+	 * @param array $config
+	 * @return  array       $extraMarkers
 	 */
-	public function getChangedForMail($arrNewData, $config) {
+	public function getChangedForMail(array $arrNewData, $config): array
+	{
 		$count = 0;
-		$template =  $this->getTemplateSubpart('changed_items', array(), $config);
-		$extraMarkers = array();
+		$template = $this->getTemplateSubpart('changed_items', [], $config);
+		$extraMarkers = [];
 
 		foreach ($this->arrUsedFields as $fieldName) {
 			if ($arrNewData[$fieldName] != $this->frontendController->fe_user->user[$fieldName]) {
-				$markerArray = array();
-				$markerArray['label'] = $this->getLabel($fieldName, FALSE);
+				$markerArray = [];
+				$markerArray['label'] = $this->getLabel($fieldName, false);
 				$markerArray['value_old'] = $this->frontendController->fe_user->user[$fieldName];
 				$markerArray['value_new'] = $arrNewData[$fieldName];
 
-				$subpart = $this->templateService->getSubpart($template, '###' . strtoupper($fieldName) . '###');
+				$subpart = $this->templateService->getSubpart($template, '###' . strtoupper((string)$fieldName) . '###');
 
 				if ($subpart) {
 					$count++;
-					$extraMarkers['changed_item_' . $fieldName] = $this->templateService->substituteMarkerArray($subpart, $markerArray, '###|###', TRUE);
+					$extraMarkers['changed_item_' . $fieldName] = $this->templateService->substituteMarkerArray($subpart, $markerArray, '###|###', true);
 				} else {
 					$extraMarkers['changed_item_' . $fieldName] = '';
 				}
@@ -1943,18 +1925,20 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	 * Erstellt ein neues Passwort, falls Passwort generieren eingestellt ist.
 	 * Dieses Passwort kannn dann ueber den Marker "###PASSWORD###" mit der Registrierungsmail gesendet werden.
 	 *
-	 * @return	array		$extraMarkers
+	 * @return  array       $extraMarkers
 	 */
-	public function getPasswordForMail() {
-		$extraMarkers = array();
+	public function getPasswordForMail(): array
+	{
+		$extraMarkers = [];
 		$generatePassword = $this->getConfigurationByShowtype('generatepassword.');
 
 		if ($generatePassword['mode'] && $this->userId) {
-			$password = tx_datamintsfeuser_utils::generatePassword($this->piVars[$this->contentId]['password'], $generatePassword);
+			$password = $this->utils->generatePassword($this->piVars[$this->contentId]['password'], $generatePassword);
 
 			$extraMarkers['password'] = $password['normal'];
 
-			$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, array('password' => $password['encrypted']));
+			$this->repository->update($this->userId, ['password' => $password['encrypted']]);
+			//$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, ['password' => $password['encrypted']]);
 		}
 
 		return $extraMarkers;
@@ -1962,12 +1946,10 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 	/**
 	 * Gibt alle im Backend definierten Felder (TypoScipt/Flexform) formatiert und der Anzeigeart entsprechend aus.
-	 *
-	 * @param	array		$valueCheck
-	 * @return	string		$content
 	 */
-	public function showForm($valueCheck = array()) {
-		$arrCurrentData = array();
+	public function showForm(array $valueCheck = []): string
+	{
+		$arrCurrentData = [];
 
 		// Beim editieren der Userdaten, die Felder vorausfuellen.
 		if ($this->conf['showtype'] == self::showtypeKeyEdit) {
@@ -1985,7 +1967,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		}
 
 		// Alle moeglichen Zeichen der Ausgabe, die stoeren koennten (XSS) konvertieren / entfernen.
-		tx_datamintsfeuser_utils::htmlspecialcharsPostArray($arrCurrentData, FALSE);
+		$this->utils->htmlspecialcharsPostArray($arrCurrentData, false);
 
 		// Seite, die den Request entgegennimmt (TypoLink).
 		$requestLink = $this->pi_getPageLink($this->conf['requestpid']);
@@ -2012,7 +1994,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		// Wenn eine Lgende fuer das erste Fieldset definiert wurde, diese ausgeben.
 		if ($this->conf['legends.'][$iFieldset]) {
-			$content .= '<legend>' . tx_datamintsfeuser_utils::currentUserWrap($this->conf['legends.'][$iFieldset], $this->conf['legends.'][$iFieldset . '.']) . '</legend>';
+			$content .= '<legend>' . $this->utils->currentUserWrap($this->conf['legends.'][$iFieldset], $this->conf['legends.'][$iFieldset . '.']) . '</legend>';
 		}
 
 		// Alle ausgewaehlten Felder durchgehen.
@@ -2037,7 +2019,8 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				}
 
 				switch ($fieldConfig['type']) {
-
+					case 'password':
+					case 'email':
 					case 'input':
 						$content .= $this->showInput($fieldName, $fieldConfig, $arrCurrentData, $disabledField, $valueCheck, $iItem);
 
@@ -2071,7 +2054,6 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 						$content .= $this->showGroup($fieldName, $fieldConfig, $arrCurrentData, $disabledField);
 
 						break;
-
 				}
 
 				// Extra Error Label ermitteln.
@@ -2084,12 +2066,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			}
 
 			// Den Feldnamen saeubern und die Spezialfelder anzeigen.
-			$fieldName = tx_datamintsfeuser_utils::getSpecialFieldName($fieldName);
+			$fieldName = $this->utils->getSpecialFieldName($fieldName);
 
 			// Submit Button anzeigen.
 			if ($fieldName == self::specialfieldKeySubmit) {
 				$content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName) . '">';
-				$content .= '<input type="submit" value="' . $this->getLabel($fieldName . '_' . $this->conf['showtype'], FALSE) . '" id="' . $this->getFieldId($fieldName) . '" />';
+				$content .= '<input type="submit" value="' . $this->getLabel($fieldName . '_' . $this->conf['showtype'], false) . '" id="' . $this->getFieldId($fieldName) . '" />';
 				$content .= '</div>';
 
 				$iItem++;
@@ -2105,7 +2087,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			// Infoitem anzeigen.
 			if ($fieldName == self::specialfieldKeyInfoitem) {
 				if ($this->conf['infoitems.'][$iInfoItem] || $this->conf['infoitems.'][$iInfoItem . '.']) {
-					$content .= '<div class="' . $this->getFieldClasses($iInfoItem, $fieldName) . '">' . tx_datamintsfeuser_utils::currentUserWrap($this->conf['infoitems.'][$iInfoItem], $this->conf['infoitems.'][$iInfoItem . '.']) . '</div>';
+					$content .= '<div class="' . $this->getFieldClasses($iInfoItem, $fieldName) . '">' . $this->utils->currentUserWrap($this->conf['infoitems.'][$iInfoItem], $this->conf['infoitems.'][$iInfoItem . '.']) . '</div>';
 				}
 
 				$iInfoItem++;
@@ -2119,7 +2101,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 				// Wenn eine Lgende fuer das Fieldset definiert wurde, diese ausgeben.
 				if ($this->conf['legends.'][$iFieldset]) {
-					$content .= '<legend>' . tx_datamintsfeuser_utils::currentUserWrap($this->conf['legends.'][$iFieldset], $this->conf['legends.'][$iFieldset . '.']) . '</legend>';
+					$content .= '<legend>' . $this->utils->currentUserWrap($this->conf['legends.'][$iFieldset], $this->conf['legends.'][$iFieldset . '.']) . '</legend>';
 				}
 			}
 
@@ -2137,27 +2119,27 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			// Aktivierung erneut senden anzeigen.
 			if ($fieldName == self::specialfieldKeyResendactivation) {
 				// Noch nicht fertig gestellte Listenansicht der nicht aktivierten User.
-//				if ($this->conf['shownotactivated'] == 'list') {
-//					$arrNotActivated = $this->getNotActivatedUserArray();
-//					$res = $this->databaseConnection->exec_SELECTquery('uid, username', 'fe_users', 'pid = ' . $this->storagePageId . ' AND uid IN(' . implode(',', $arrNotActivated) . ') AND disable = 1 AND deleted = 0');
-//
-//					while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
-//						$content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName) . ' ' . $this->conf['shownotactivated'] . '">';
-//						$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . ' ' . $row['username'] . '</label>';
-//						$content .= '<input type="checkbox" name="' . $this->getFieldName($fieldName, $row['uid']) . '" value="1" id="' . $this->getFieldId($fieldName) . '" />';
-//						$content .= '</div>';
-//
-//						$iItem++;
-//					}
-//				} else {
-					$content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName, 'input', $valueCheck) . '">';
-					$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . '</label>';
-					$content .= '<input type="text" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />';
-					$content .= $this->getErrorLabel($fieldName, $valueCheck);
-					$content .= '</div>';
+				//              if ($this->conf['shownotactivated'] == 'list') {
+				//                  $arrNotActivated = $this->getNotActivatedUserArray();
+				//                  $res = $this->databaseConnection->exec_SELECTquery('uid, username', 'fe_users', 'pid = ' . $this->storagePageId . ' AND uid IN(' . implode(',', $arrNotActivated) . ') AND disable = 1 AND deleted = 0');
+				//
+				//                  while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
+				//                      $content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName) . ' ' . $this->conf['shownotactivated'] . '">';
+				//                      $content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . ' ' . $row['username'] . '</label>';
+				//                      $content .= '<input type="checkbox" name="' . $this->getFieldName($fieldName, $row['uid']) . '" value="1" id="' . $this->getFieldId($fieldName) . '" />';
+				//                      $content .= '</div>';
+				//
+				//                      $iItem++;
+				//                  }
+				//              } else {
+				$content .= '<div id="' . $this->getFieldId($fieldName, 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName, 'input', $valueCheck) . '">';
+				$content .= '<label for="' . $this->getFieldId($fieldName) . '">' . $this->getLabel($fieldName) . '</label>';
+				$content .= '<input type="text" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />';
+				$content .= $this->getErrorLabel($fieldName, $valueCheck);
+				$content .= '</div>';
 
-					$iItem++;
-//				}
+				$iItem++;
+				//              }
 			}
 
 			// Passwortbestaetigung anzeigen.
@@ -2180,27 +2162,29 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$content .= $this->getHiddenParamsHiddenFields();
 
 		$content .= '</fieldset>';
-		$content .= '</form>';
 
-		return $content;
+		return $content . '</form>';
 	}
 
 	/**
 	 * Ersetzt bei Feldern mit einer MM-Relation den Wert aus dem FE User Datensatz (Anzahl der Relationen) mit den eigentlichen IDs der verknuepften Datensaetze.
 	 *
-	 * @param	array		$userId
-	 * @param	array		$arrCurrentData
-	 * @return	array		$arrCurrentData
+	 * @param array $userId
+	 * @return  array       $arrCurrentData
 	 */
-	public function mergeRelationValues($userId, $arrCurrentData) {
+	public function mergeRelationValues($userId, array $arrCurrentData): array
+	{
 		foreach (array_keys($arrCurrentData) as $fieldName) {
 			if (!is_array($this->feUsersTca['columns'][$fieldName])) {
 				continue;
 			}
 
 			$fieldConfig = $this->feUsersTca['columns'][$fieldName]['config'];
+			if (!$fieldConfig['MM']) {
+				continue;
+			}
 
-			if (!$fieldConfig['MM'] || !($fieldConfig['type'] == 'select' || ($fieldConfig['type'] == 'group' && $fieldConfig['internal_type'] == 'db'))) {
+			if ($fieldConfig['type'] != 'select' && !($fieldConfig['type'] == 'group' && $fieldConfig['internal_type'] == 'db')) {
 				continue;
 			}
 
@@ -2217,39 +2201,42 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			}
 
 			// Falls kein AND, OR, GROUP BY, ORDER BY oder LIMIT am Anfang des where steht, ein AND voranstellen!
-			$options = strtolower(substr(trim($fieldConfig['MM_table_where']), 0, 3));
+			$options = strtolower(substr(trim((string)$fieldConfig['MM_table_where']), 0, 3));
 
-			$mmWhere .= ' ' . trim((!$options || $options == 'and' || $options == 'or ' || $options == 'gro' || $options == 'ord' || $options == 'lim') ? $fieldConfig['MM_table_where'] : 'AND ' . $fieldConfig['MM_table_where']);
+			$mmWhere .= ' ' . trim((!$options || $options === 'and' || $options === 'or ' || $options === 'gro' || $options === 'ord' || $options === 'lim') ? $fieldConfig['MM_table_where'] : 'AND ' . $fieldConfig['MM_table_where']);
 
 			if ($fieldConfig['type'] == 'select') {
-				$arrForeignTables = GeneralUtility::trimExplode(',', $fieldConfig['foreign_table'], TRUE);
+				//$arrForeignTables = GeneralUtility::trimExplode(',', $fieldConfig['foreign_table'], true);
 
 				// Falls kein AND, OR, GROUP BY, ORDER BY oder LIMIT am Anfang des where steht, ein AND voranstellen!
-				$options = strtolower(substr(trim($fieldConfig['foreign_table_where']), 0, 3));
+				$options = strtolower(substr(trim((string)$fieldConfig['foreign_table_where']), 0, 3));
 
-				$foreignWhere .= ' ' . trim((!$options || $options == 'and' || $options == 'or ' || $options == 'gro' || $options == 'ord' || $options == 'lim') ? $fieldConfig['foreign_table_where'] : 'AND ' . $fieldConfig['foreign_table_where']);
+				$foreignWhere .= ' ' . trim((!$options || $options === 'and' || $options === 'or ' || $options === 'gro' || $options === 'ord' || $options === 'lim') ? $fieldConfig['foreign_table_where'] : 'AND ' . $fieldConfig['foreign_table_where']);
 			}
 
+			$arrForeignTables = [];
 			if ($fieldConfig['type'] == 'group' && $fieldConfig['internal_type'] == 'db') {
-				$arrForeignTables = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], TRUE);
+				$arrForeignTables = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], true);
 			}
 
-			$arrCurrentData[$fieldName] = array();
+			$arrCurrentData[$fieldName] = [];
 
 			foreach ($arrForeignTables as $foreignTable) {
 				if (!$GLOBALS['TCA'][$foreignTable]) {
 					continue;
 				}
 
-				$tables = ($fieldConfig['MM_match_fields'] && $fieldConfig['MM_match_fields']['tablenames'] == 'fe_users') ? array(
-					'local' => $foreignTable,
-					'foreign' => 'fe_users'
-				) : array(
-					'local' => 'fe_users',
-					'foreign' => $foreignTable
-				);
 
+				$queryBuilder = GeneralUtility::makeInstance(\TYPO3\CMS\Core\Database\Query\QueryBuilder::class);
+				assert($queryBuilder instanceof \TYPO3\CMS\Core\Database\Query\QueryBuilder);
+				$queryBuilder->
+				$tables = ($fieldConfig['MM_match_fields'] && $fieldConfig['MM_match_fields']['tablenames'] == 'fe_users') ? ['local' => $foreignTable, 'foreign' => 'fe_users'] : ['local' => 'fe_users', 'foreign' => $foreignTable];
 				$res = $this->databaseConnection->exec_SELECT_mm_query($foreignTable . '.uid', $tables['local'], $mmTable, $tables['foreign'], $where . $this->pageRepository->enableFields($foreignTable) . $mmWhere . $foreignWhere);
+
+
+
+				#$queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+				#$result = $queryBuilder->select('uid', $labelFieldName)->from($table)->executeQuery();
 
 				while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
 					$arrCurrentData[$fieldName][] = $row['uid'];
@@ -2263,88 +2250,78 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Rendert Inputfelder.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @param	array		$arrCurrentData
-	 * @param	string		$disabledField
-	 * @param	array		$valueCheck
-	 * @param	integer		$iItem
-	 * @return	string		$content
+	 * @param array $valueCheck
+	 * @return  string      $content
 	 */
-	public function showInput($fieldName, $fieldConfig, $arrCurrentData, $disabledField = '', $valueCheck = array(), $iItem = 0) {
+	public function showInput(string $fieldName, array $fieldConfig, array $arrCurrentData, string $disabledField = '', $valueCheck = [], int $iItem = 0): string
+	{
 		$content = '';
 		$additionalAttributes = '';
-
-		$arrFieldConfigEval = GeneralUtility::trimExplode(',', $fieldConfig['eval'], TRUE);
+		$type = $fieldConfig['type'] ?? 'text';
+		if ($type === 'datetime') {
+			$type = 'datetime-local';
+		}
+		$arrFieldConfigEval = GeneralUtility::trimExplode(',', $fieldConfig['eval'], true);
 
 		// Datumsfeld und Datumzeitfeld.
-		if (in_array('date', $arrFieldConfigEval) || in_array('datetime', $arrFieldConfigEval)) {
+		if ($type === 'date' || $type === 'datetime-local') {
 			// Vom User ausgefuellten Wert vorbelegen, da bei einem Fehler im Formular das Datum nicht in einen Timestamp zurueck konvertiert wird.
-			$datum = ($arrCurrentData[$fieldName]) ? $arrCurrentData[$fieldName] : '';
+			$datum = $arrCurrentData[$fieldName] ?: '';
 
 			// Nur als Datum formatieren, wenn der aktuelle Wert ein Timestamp ist.
 			if ($arrCurrentData[$fieldName] && is_numeric($arrCurrentData[$fieldName])) {
 				// Timestamp zu "tt.mm.jjjj" machen.
-				if (in_array('date', $arrFieldConfigEval)) {
+				if ($type === 'date') {
 					$datum = date($this->conf['format.']['date'], $arrCurrentData[$fieldName]);
 				}
 
 				// Timestamp zu "hh:mm tt.mm.jjjj" machen.
-				if (in_array('datetime', $arrFieldConfigEval)) {
+				if ($type === 'date-local') {
 					$datum = date($this->conf['format.']['datetime'], $arrCurrentData[$fieldName]);
 				}
 			}
 
-			$content .= '<input type="text" name="' . $this->getFieldName($fieldName) . '" value="' . $datum . '"' . $disabledField . ' id="' . $this->getFieldId($fieldName) . '" />';
-
-			return $content;
+			return $content . ('<input type="' . $type . '" name="' . $this->getFieldName($fieldName) . '" value="' . $datum . '"' . $disabledField . ' id="' . $this->getFieldId($fieldName) . '" />');
 		}
 
 		// Passwordfelder.
-		if (in_array('password', $arrFieldConfigEval)) {
+		if ($type === 'password') {
 			$content .= '<input type="password" name="' . $this->getFieldName($fieldName) . '" value=""' . $disabledField . ' id="' . $this->getFieldId($fieldName) . '" />';
 			$content .= '</div><div id="' . $this->getFieldId($fieldName, 'rep', 'wrapper') . '" class="' . $this->getFieldClasses($iItem, $fieldName, $fieldConfig['type'], $valueCheck) . '">';
-			$content .= '<label for="' . $this->getFieldId($fieldName, 'rep') . '">' . $this->getLabel($fieldName . '_rep', FALSE) . $this->isRequiredField($fieldName) . '</label>';
-			$content .= '<input type="password" name="' . $this->prefixId . '[' . $this->contentId . '][' . $fieldName . '_rep]" value=""' . $disabledField . ' id="' . $this->getFieldId($fieldName, 'rep') . '" />';
+			$content .= '<label for="' . $this->getFieldId($fieldName, 'rep') . '">' . $this->getLabel($fieldName . '_rep', false) . $this->isRequiredField($fieldName) . '</label>';
 
-			return $content;
+			return $content . ('<input type="password" name="' . $this->prefixId . '[' . $this->contentId . '][' . $fieldName . '_rep]" value=""' . $disabledField . ' id="' . $this->getFieldId($fieldName, 'rep') . '" />');
 		}
 
 		// Normales Inputfeld.
 		$additionalAttributes .= ($fieldConfig['max']) ? ' maxlength="' . $fieldConfig['max'] . '"' : '';
 
-		$content .= '<input type="text" name="' . $this->getFieldName($fieldName) . '" value="' . $arrCurrentData[$fieldName] . '"' . $disabledField . ' id="' . $this->getFieldId($fieldName) . '"' . $additionalAttributes . ' />';
-
-		return $content;
+		return $content . ('<input type="' . $type . '" name="' . $this->getFieldName($fieldName) . '" value="' . $arrCurrentData[$fieldName] . '"' . $disabledField . ' id="' . $this->getFieldId($fieldName) . '"' . $additionalAttributes . ' />');
 	}
 
 	/**
 	 * Rendert Textareas.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @param	array		$arrCurrentData
-	 * @param	string		$disabledField
-	 * @return	string		$content
+	 * @param string $fieldName
+	 * @param array $fieldConfig
+	 * @return  string      $content
 	 */
-	public function showText($fieldName, $fieldConfig, $arrCurrentData, $disabledField = '') {
+	public function showText($fieldName, $fieldConfig, array $arrCurrentData, string $disabledField = ''): string
+	{
 		$content = '';
 
-		$content .= '<textarea name="' . $this->getFieldName($fieldName) . '" rows="2" cols="42"' . $disabledField . ' id="' . $this->getFieldId($fieldName) . '">' . $arrCurrentData[$fieldName] . '</textarea>';
-
-		return $content;
+		return $content . ('<textarea name="' . $this->getFieldName($fieldName) . '" rows="2" cols="42"' . $disabledField . ' id="' . $this->getFieldId($fieldName) . '">' . $arrCurrentData[$fieldName] . '</textarea>');
 	}
 
 	/**
 	 * Rendert Checkboxen.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @param	array		$arrCurrentData
-	 * @param	string		$disabledField
-	 * @return	string		$content
+	 * @param string $fieldName
+	 * @param array $arrCurrentData
+	 * @return  string      $content
 	 */
-	public function showCheck($fieldName, $fieldConfig, $arrCurrentData, $disabledField = '') {
+	public function showCheck($fieldName, array $fieldConfig, $arrCurrentData, string $disabledField = ''): string
+	{
 		$content = '';
 
 		if (count((array)$fieldConfig['items']) > 1) {
@@ -2371,7 +2348,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 				$content .= '<div id="' . $this->getFieldId($fieldName, 'item', $i, 'wrapper') . '" class="item item-' . $i . '">';
 				$content .= '<input type="checkbox" name="' . $this->getFieldName($fieldName, $key) . '" value="1"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName, 'item', $i) . '" />';
-				$content .= '<label for="' . $this->getFieldId($fieldName, 'item', $i) . '">' . $this->getLabel($checkItem[0], FALSE) . '</label>';
+				$content .= '<label for="' . $this->getFieldId($fieldName, 'item', $i) . '">' . $this->getLabel($checkItem[0], false) . '</label>';
 				$content .= '</div>';
 
 				$i++;
@@ -2386,8 +2363,6 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			$content .= '<input class="input input--checkbox" type="checkbox" name="' . $this->getFieldName($fieldName) . '" value="1"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName) . '" />';
 			$content .= '<span class="label__checkmark"></span>';
 			$content .= $this->getLabel($fieldName) . '</label>';
-
-
 		}
 
 		return $content;
@@ -2396,13 +2371,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Rendert Radiobuttons.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @param	array		$arrCurrentData
-	 * @param	string		$disabledField
-	 * @return	string		$content
+	 * @param string $fieldName
+	 * @param array $fieldConfig
+	 * @return  string      $content
 	 */
-	public function showRadio($fieldName, $fieldConfig, $arrCurrentData, $disabledField = '') {
+	public function showRadio($fieldName, $fieldConfig, array $arrCurrentData, string $disabledField = ''): string
+	{
 		$content = '';
 
 		$content .= '<div class="list">';
@@ -2416,7 +2390,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				$content .= '<div id="' . $this->getFieldId($fieldName, 'item', $i, 'wrapper') . '" class="item item-' . $i . '">';
 				$content .= '<input type="radio" name="' . $this->getFieldName($fieldName) . '" value="' . $radioItem[1] . '"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName, 'item', $i) . '" />';
 				$content .= '<label for="' . $this->getFieldId($fieldName, 'item', $i) . '">';
-				$content .= $this->getLabel($radioItem[0], FALSE);
+				$content .= $this->getLabel($radioItem[0], false);
 				$content .= '</label>';
 				$content .= '</div>';
 
@@ -2424,28 +2398,28 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			}
 		}
 
-		$content .= '</div>';
-
-		return $content;
+		return $content . '</div>';
 	}
 
 	/**
 	 * Rendert Selectfelder.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @param	array		$arrCurrentData
-	 * @param	string		$disabledField
-	 * @return	string		$content
+	 * @param string $fieldName
+	 * @param array $fieldConfig
+	 * @param array $arrCurrentData
+	 * @return  string      $content
+	 * @throws AspectPropertyNotFoundException
+	 * @throws AspectNotFoundException
 	 */
-	public function showSelect($fieldName, $fieldConfig, $arrCurrentData, $disabledField = '') {
+	public function showSelect($fieldName, $fieldConfig, $arrCurrentData, string $disabledField = ''): string
+	{
 		$content = '';
 		$optionlist = '';
 
 		// ToDo: Logik von Anzeige trennen!
 		// Moeglichkeit das der gespeicherte Wert eine kommseparierte Liste ist, daher aufsplitten in ein Array, wie es auch von einem abgesendeten Formular kommen wuerde.
 		if (!is_array($arrCurrentData[$fieldName])) {
-			$arrCurrentData[$fieldName] = GeneralUtility::trimExplode(',', $arrCurrentData[$fieldName], TRUE);
+			$arrCurrentData[$fieldName] = GeneralUtility::trimExplode(',', $arrCurrentData[$fieldName], true);
 		}
 
 		// Beim Typ Select gibt es zwei verschidene Rendermodi. Dieser kann "singlebox" (dann ist es eine Selectbox) oder "checkbox" (dann ist es eine Checkboxliste) sein.
@@ -2459,12 +2433,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 					$optionlist .= '<div id="' . $this->getFieldId($fieldName, 'item', $i, 'wrapper') . '" class="item item-' . $i . '">';
 					$optionlist .= '<input type="checkbox"  name="' . $this->getFieldName($fieldName) . '[]" value="' . $selectItem[1] . '"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName, 'item', $i) . '" />';
-					$optionlist .= '<label for="' . $this->getFieldId($fieldName, 'item', $i) . '">' . $this->getLabel($selectItem[0], FALSE) . '</label>';
+					$optionlist .= '<label for="' . $this->getFieldId($fieldName, 'item', $i) . '">' . $this->getLabel($selectItem[0], false) . '</label>';
 					$optionlist .= '</div>';
 				} else {
 					$selected = in_array($selectItem[1], $arrCurrentData[$fieldName]) ? ' selected="selected"' : '';
 
-					$optionlist .= '<option value="' . $selectItem[1] . '"' . $selected . '>' . $this->getLabel($selectItem[0], FALSE) . '</option>';
+					$optionlist .= '<option value="' . $selectItem[1] . '"' . $selected . '>' . $this->getLabel($selectItem[0], false) . '</option>';
 				}
 
 				$i++;
@@ -2476,23 +2450,36 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			$table = $fieldConfig['foreign_table'];
 
 			$labelFieldName = $this->getTableLabelFieldName($table);
-			$languageFieldName = tx_datamintsfeuser_utils::getLanguageFieldName($table);
+			$languageFieldName = $this->utils->getLanguageFieldName($table);
 
 			// Select-Items aus DB holen.
-			$select = implode(', ', array_filter(array('uid', 'pid', $languageFieldName, $labelFieldName)));
+			$select = implode(', ', array_filter(['uid', 'pid', $languageFieldName, $labelFieldName]));
 
 			// Falls kein AND, OR, GROUP BY, ORDER BY oder LIMIT am Anfang des where steht, ein AND voranstellen!
-			$options = strtolower(substr(trim($fieldConfig['foreign_table_where']), 0, 3));
-			$options = trim((!$options || $options == 'and' || $options == 'or ' || $options == 'gro' || $options == 'ord' || $options == 'lim') ? $fieldConfig['foreign_table_where'] : 'AND ' . $fieldConfig['foreign_table_where']);
+			$options = strtolower(substr(trim((string)$fieldConfig['foreign_table_where']), 0, 3));
+			$options = trim((!$options || $options === 'and' || $options === 'or ' || $options === 'gro' || $options === 'ord' || $options === 'lim') ? $fieldConfig['foreign_table_where'] : 'AND ' . $fieldConfig['foreign_table_where']);
 
-			$res = $this->databaseConnection->exec_SELECTquery($select, $table, '1 ' . $this->pageRepository->enableFields($table) . ' ' . $options);
+
+			$queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+			$result = $queryBuilder->select('uid', $labelFieldName)
+				->from($table)
+				->where(
+					'1=1 ' . $options
+				)->executeQuery();
+
+
+			//$res = $this->databaseConnection->exec_SELECTquery($select, $table, '1 ' . $this->pageRepository->enableFields($table) . ' ' . $options);
 
 			$i = 1;
 
-			while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
+
+			$languageId = $this->languageAspect->getId();
+			$overlayType = $this->languageAspect->getOverlayType();
+
+			while ($row = $result->fetchAssociative()) {
 				// Übersetzung ermitteln.
-				if ($this->frontendController->sys_language_contentOL && $languageFieldName && $row[$languageFieldName] != $this->frontendController->sys_language_content) {
-					$row = $this->frontendController->sys_page->getRecordOverlay($table, $row, $this->frontendController->sys_language_content, $this->frontendController->sys_language_contentOL);
+				if ($overlayType && $languageFieldName && $row[$languageFieldName] != $languageId) {
+					$row = $this->frontendController->sys_page->getLanguageOverlay($table, $row, $this->languageAspect);
 				}
 
 				if ($fieldConfig['renderMode'] == 'checkbox') {
@@ -2535,23 +2522,18 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 	/**
 	 * Rendert Groupfelder (z.B. Dateien oder externe Tabellen).
-	 *
-	 * @param	string		$fieldName
-	 * @param	array		$fieldConfig
-	 * @param	array		$arrCurrentData
-	 * @param	string		$disabledField
-	 * @return	string		$content
 	 */
-	public function showGroup($fieldName, $fieldConfig, $arrCurrentData, $disabledField = '') {
+	public function showGroup(string $fieldName, array $fieldConfig, array $arrCurrentData, string $disabledField = ''): string
+	{
 		$content = '';
 
 		// Wenn es sich um den Typ FILE handelt && es ein Bild ist, dann ein Vorschaubild erstellen und ein File-Inputfeld anzeigen.
 		if ($fieldConfig['internal_type'] == 'file') {
 			// Verzeichniss ermitteln.
-			$uploadFolder = tx_datamintsfeuser_utils::fixPath($fieldConfig['uploadfolder']);
+			$uploadFolder = $this->utils->fixPath($fieldConfig['uploadfolder']);
 
 			// ToDo: Logik von Anzeige trennen!
-			$arrCurrentFieldData = GeneralUtility::trimExplode(',', $arrCurrentData[$fieldName], TRUE);
+			$arrCurrentFieldData = GeneralUtility::trimExplode(',', $arrCurrentData[$fieldName], true);
 
 			$content .= '<div class="list">';
 
@@ -2581,7 +2563,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				}
 
 				if (!$fieldConfig['show_thumbs'] && $filename) {
-					$content .= '<div class="link"><a href="' . tx_datamintsfeuser_utils::getTypoLinkUrl($uploadFolder . $filename) . '" target="_blank" alt="' . $filename . '">' . $filename . '</a></div>';
+					$content .= '<div class="link"><a href="' . $this->utils->getTypoLinkUrl($uploadFolder . $filename) . '" target="_blank" alt="' . $filename . '">' . $filename . '</a></div>';
 				}
 
 				// Upload-Feld anzeigen.
@@ -2592,7 +2574,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				if ($filename) {
 					$content .= '<div class="delete">';
 					$content .= '<input type="checkbox" name="' . $this->getFieldName($fieldName, 'delete', $key) . '"' . $disabledField . ' id="' . $this->getFieldId($fieldName, 'delete', $i) . '" />';
-					$content .= '<label for="' . $this->getFieldId($fieldName, 'delete', $i) . '">' . $this->getLabel($fieldName . '_delete', FALSE) . '</label>';
+					$content .= '<label for="' . $this->getFieldId($fieldName, 'delete', $i) . '">' . $this->getLabel($fieldName . '_delete', false) . '</label>';
 					$content .= '</div>';
 				}
 
@@ -2607,8 +2589,8 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		// Wenn es sich um den Typ DB handelt.
 		// Hier werden absichtlich nur die Erlaubten Tabellen benutzt, da es sonst unmengen an möglichen Optionen geben wuerde!
 		if ($fieldConfig['internal_type'] == 'db') {
-			$arrItems = array();
-			$arrAllowed = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], TRUE);
+			$arrItems = [];
+			$arrAllowed = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], true);
 
 			foreach ($arrAllowed as $table) {
 				if (!$GLOBALS['TCA'][$table]) {
@@ -2617,9 +2599,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 				$labelFieldName = $this->getTableLabelFieldName($table);
 
-				$res = $this->databaseConnection->exec_SELECTquery('uid, ' . $labelFieldName, $table, '1 ' . $this->pageRepository->enableFields($table));
+				$queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+				$result = $queryBuilder->select('uid', $labelFieldName)->from($table)->executeQuery();
 
-				while ($row = $this->databaseConnection->sql_fetch_assoc($res)) {
+				//$res = $this->databaseConnection->exec_SELECTquery('uid, ' . $labelFieldName, $table, '1 ' . $this->pageRepository->enableFields($table));
+
+				while ($row = $result->fetchAssociative()) {
 					$arrItems[$table . '_' . $row['uid']] = $row[$labelFieldName];
 				}
 			}
@@ -2634,14 +2619,14 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				// ToDo: Logik von Anzeige trennen!
 				// Ist der gespeicherte Wert eine kommseparierte Liste, dann in ein Array aufsplitten, wie es auch von einem abgesendeten Formular kommen wuerde.
 				if (!is_array($arrCurrentData[$fieldName])) {
-					$arrCurrentData[$fieldName] = GeneralUtility::trimExplode(',', $arrCurrentData[$fieldName], TRUE);
+					$arrCurrentData[$fieldName] = GeneralUtility::trimExplode(',', $arrCurrentData[$fieldName], true);
 				}
 
-				$checked = array_intersect(array($key, substr($key, strripos($key, '_') + 1)), $arrCurrentData[$fieldName]) ? ' checked="checked"' : '';
+				$checked = array_intersect([$key, substr($key, strripos($key, '_') + 1)], $arrCurrentData[$fieldName]) ? ' checked="checked"' : '';
 
 				$content .= '<div id="' . $this->getFieldId($fieldName, 'item', $i, 'wrapper') . '" class="item item-' . $i . '">';
 				$content .= '<input type="checkbox" name="' . $this->getFieldName($fieldName) . '[]" value="' . $key . '"' . $checked . $disabledField . ' id="' . $this->getFieldId($fieldName, 'item', $i) . '" />';
-				$content .= '<label for="' . $this->getFieldId($fieldName, 'item', $i) . '">'. $label . '</label>';
+				$content .= '<label for="' . $this->getFieldId($fieldName, 'item', $i) . '">' . $label . '</label>';
 				$content .= '</div>';
 
 				$i++;
@@ -2656,83 +2641,57 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Rendert ein Captcha.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$valueCheck
-	 * @param	integer		$iItem
-	 * @return	string		$content
+	 * @param string $fieldName
+	 * @param array $valueCheck
+	 * @return  string      $content
 	 */
-	public function showCaptcha($fieldName, $valueCheck, $iItem) {
+	public function showCaptcha($fieldName, $valueCheck, int $iItem): string
+	{
 		$content = '';
 		$captcha = '';
-//		$showInput = TRUE;
+		//      $showInput = TRUE;
 
 		if (!ExtensionManagementUtility::isLoaded($this->conf['captcha.']['use'])) {
 			return $content;
 		}
 
-		switch ($this->conf['captcha.']['use']) {
+		if ($this->conf['captcha.']['use'] === 'powermail') {
+			$viewHelperInvoker = GeneralUtility::makeInstance(ViewHelperInvoker::class);
 
-			case 'powermail':
-				$viewHelperInvoker = GeneralUtility::makeInstance(\TYPO3Fluid\Fluid\Core\ViewHelper\ViewHelperInvoker::class);
-				$renderingContext = GeneralUtility::makeInstance(\TYPO3\CMS\Fluid\Core\Rendering\RenderingContext::class);
-
-				$field = new Field();
-				$field->_setProperty('uid', $this->contentId);
-
-				$result = $viewHelperInvoker->invoke(
-					\In2code\Powermail\ViewHelpers\Validation\CaptchaViewHelper::class,
-					[
-						'field' => $field,
-						'class' => $this->conf['captcha.']['class'] ?: '',
-					],
-					$renderingContext,
-				);
-				$captcha = $result;
-				if ($this->conf['captcha.']['reload_class']) {
-					$captcha .= '<span class="' . $this->conf['captcha.']['reload_class'] . '">';
-					if ($this->conf['captcha.']['reload_icon_path']) {
-						$captcha .= '<img src="' . $this->conf['captcha.']['reload_icon_path'] . '"/>';
+			$renderingContext = GeneralUtility::makeInstance(RenderingContextFactory::class)->create();
+			$field = new Field();
+			$field->_setProperty('uid', $this->contentId);
+			$result = $viewHelperInvoker->invoke(
+				CaptchaViewHelper::class,
+				[
+					'field' => $field,
+					'class' => $this->conf['captcha.']['class'] ?: '',
+				],
+				$renderingContext,
+			);
+			$captcha = $result;
+			if ($this->conf['captcha.']['reload_class']) {
+				$captcha .= '<span class="' . $this->conf['captcha.']['reload_class'] . '">';
+				if ($this->conf['captcha.']['reload_icon_path']) {
+					$reloadIconPath = GeneralUtility::getFileAbsFileName($this->conf['captcha.']['reload_icon_path']);
+					if (!$reloadIconPath) {
+						throw new \Exception('Could not load captcha button');
 					}
-					$captcha .= '</span>';
+					$reloadIconFileContent = file_get_contents($reloadIconPath);
+
+					$pos = strpos($reloadIconFileContent, '<svg');
+					if (false === $pos) {
+						$f = finfo_open();
+						$mimeType = finfo_buffer($f, $reloadIconFileContent, FILEINFO_MIME_TYPE);
+						$captcha .= '<img src="data:' . $mimeType . ';base64,' . base64_encode($reloadIconFileContent) . '"/>';
+					} else {
+						$svg = substr($reloadIconFileContent, $pos);
+						$captcha .= $svg;
+					}
 				}
 
-				break;
-
-			case 'captcha':
-				$captcha = '<img src="' . tx_datamintsfeuser_utils::getTypoLinkUrl(PathUtility::stripPathSitePrefix(ExtensionManagementUtility::extPath($this->conf['captcha.']['use'])) . 'captcha/captcha.php') . '" alt="Captcha" />';
-
-				break;
-
-			case 'sr_freecap':
-				require_once(ExtensionManagementUtility::extPath($this->conf['captcha.']['use']) . 'pi2/class.tx_srfreecap_pi2.php');
-
-				$freecap = GeneralUtility::makeInstance('tx_srfreecap_pi2');
-				$arrFreecap = $freecap->makeCaptcha();
-
-				$captcha = $arrFreecap['###SR_FREECAP_IMAGE###'];
-
-				break;
-
-//			case 'jm_recaptcha':
-//				require_once(ExtensionManagementUtility::extPath($this->conf['captcha.']['use']) . 'class.tx_jmrecaptcha.php');
-//
-//				$recaptcha = GeneralUtility::makeInstance('tx_jmrecaptcha');
-//
-//				$captcha = $recaptcha->getReCaptcha();
-//
-//				$showInput = FALSE;
-//
-//				break;
-
-			case 'wt_calculating_captcha':
-				require_once(ExtensionManagementUtility::extPath($this->conf['captcha.']['use']) . 'class.tx_wtcalculatingcaptcha.php');
-
-				$calculatingcaptcha = GeneralUtility::makeInstance('tx_wtcalculatingcaptcha');
-
-				$captcha = $calculatingcaptcha->generateCaptcha();
-
-				break;
-
+				$captcha .= '</span>';
+			}
 		}
 
 		if (!$captcha) {
@@ -2744,78 +2703,49 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		if ($this->getLabel('captcha_info')) {
 			$content .= '<div class="captchaInfo"> ' . $this->getLabel('captcha_info') . '</div>';
 		}
+
 		$content .= '<div class="captcha">' . $captcha . '</div>';
 		$content .= '<input type="text" required="required" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />';
-//		$content .= ($showInput) ? '<input type="text" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />' : '';
+		//      $content .= ($showInput) ? '<input type="text" name="' . $this->getFieldName($fieldName) . '" value="" id="' . $this->getFieldId($fieldName) . '" />' : '';
 		$content .= $this->getErrorLabel($fieldName, $valueCheck);
-		$content .= '</div>';
 
-		return $content;
+		return $content . '</div>';
 	}
 
 	/**
 	 * Ermittelt die ID fuer das uebergebene Feld.
-	 *
-	 * @param	string		...
-	 * @return	string
 	 */
-	public function getFieldId() {
+	public function getFieldId(...$arrFuncArgs): string
+	{
 		if (!func_num_args()) {
 			return '';
 		}
 
-		$arrParts = array(
-			$this->extKey,
-			$this->contentId
-		);
-
-		// Darf nicht als Methoden-Parameter uebergeben werden, da das vor PHP 5.3 fuer diese Methode nicht unterstuetzt wurde!
-		$arrFuncArgs = func_get_args();
+		$arrParts = [$this->extKey, $this->contentId];
 
 		return implode('_', array_merge($arrParts, $arrFuncArgs));
 	}
 
 	/**
 	 * Liefert die Klassen für den Feld-Wrapper zurück.
-	 *
-	 * @param	integer		$iItem
-	 * @param	string		$fieldName
-	 * @param	string		$fieldType
-	 * @param	array		$valueCheck
-	 * @return	string
 	 */
-	public function getFieldClasses($iItem, $fieldName, $fieldType = '', $valueCheck = array()) {
-		$arrParts = array(
-			'item',
-			'item-' . $iItem,
-			'name-' . $fieldName,
-			(($fieldType) ? 'type-' . $fieldType : ''),
-			($this->isRequiredField($fieldName) ? 'required' : ''),
-			(($valueCheck) ? trim($this->getErrorClass($fieldName, $valueCheck)) : ''),
-			'clearfix'
-		);
+	public function getFieldClasses(int $iItem, string $fieldName, ?string $fieldType = '', array $valueCheck = []): string
+	{
+		$arrParts = ['item', 'item-' . $iItem, 'name-' . $fieldName, (($fieldType) ? 'type-' . $fieldType : ''), ($this->isRequiredField($fieldName) ? 'required' : ''), (($valueCheck) ? trim($this->getErrorClass($fieldName, $valueCheck)) : ''), 'clearfix'];
 
 		return implode(' ', array_filter($arrParts));
 	}
 
 	/**
 	 * Ermittelt den Namen fuer das uebergebene Feld.
-	 *
-	 * @param	string		...
-	 * @return	string
 	 */
-	public function getFieldName() {
+	public function getFieldName(...$arrFuncArgs): string
+	{
 		if (!func_num_args()) {
 			return '';
 		}
 
-		$arrParts = array(
-			$this->prefixId,
-			$this->contentId
-		);
-
-		// Darf nicht als Methoden-Parameter uebergeben werden, da das vor PHP 5.3 fuer diese Methode nicht unterstuetzt wurde!
-		$arrFuncArgs = func_get_args();
+		$arrParts = [$this->prefixId, $this->contentId];
 
 		return array_shift($arrParts) . '[' . implode('][', array_merge($arrParts, $arrFuncArgs)) . ']';
 	}
@@ -2823,38 +2753,46 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ermittelt ein bestimmtes Label aufgrund des im TCA gespeicherten Languagestrings, des Datenbankfeldnamens oder gibt einfach den uebergeben Wert wieder aus, wenn nichts gefunden wurde.
 	 *
-	 * @param	string		$fieldName / $languageString
-	 * @param	boolean		$checkRequired
-	 * @return	string
+	 * @param string $fieldName / $languageString
 	 */
-	public function getLabel($fieldName, $checkRequired = TRUE) {
-		if (strpos($fieldName, 'LLL:') === FALSE) {
+	public function getLabel(string $fieldName, bool $checkRequired = true): string
+	{
+		if (!str_contains($fieldName, 'LLL:')) {
 			// Label aus der Konfiguration holen basierend auf dem Datenbankfeldnamen.
 			$label = $this->pi_getLL($fieldName);
 
 			// Das Label zurueckliefern, falls vorhanden.
 			if ($label) {
+				if ($checkRequired && str_ends_with($label, '*')) {
+					$label = trim($label, ' *');
+				}
 				return $label . (($checkRequired) ? $this->isRequiredField($fieldName) : '');
 			}
 
 			//Label aus der Flexform holen
 			$label = $this->getFlexformLabelByFieldName($fieldName);
 			if ($label) {
+				if ($checkRequired && str_ends_with($label, '*')) {
+					$label = trim($label, ' *');
+				}
 				return $label;
 			}
 
 			// LanguageString ermitteln.
 			$languageString = $this->feUsersTca['columns'][$fieldName]['label'];
-
 		} else {
 			$languageString = $fieldName;
 		}
 
 		// Label aus der Konfiguration holen basierend auf dem languageKey.
-		$label = $this->pi_getLL(str_replace('.', '-', array_pop(GeneralUtility::trimExplode(':', $languageString, TRUE))));
+		$lstr = GeneralUtility::trimExplode(':', $languageString, true);
+		$label = $this->pi_getLL(str_replace('.', '-', array_pop($lstr)));
 
 		// Das Label zurueckliefern, falls vorhanden.
 		if ($label) {
+			if ($checkRequired && str_ends_with($label, '*')) {
+				$label = trim($label, ' *');
+			}
 			return $label . (($checkRequired) ? $this->isRequiredField($fieldName) : '');
 		}
 
@@ -2863,6 +2801,10 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 		// Das Label zurueckliefern, falls vorhanden.
 		if ($label) {
+
+			if ($checkRequired && str_ends_with($label, '*')) {
+				$label = trim($label, ' *');
+			}
 			return $label . (($checkRequired) ? $this->isRequiredField($fieldName) : '');
 		}
 
@@ -2871,112 +2813,107 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	}
 
 	/**
-	 * @param string $fieldName
 	 * @return mixed|string
 	 */
-	public function getFlexformLabelByFieldName(string $fieldName) {
-		foreach($this->conf['databasefields'] as $databaseField) {
+	public function getFlexformLabelByFieldName(string $fieldName): mixed
+	{
+		foreach ($this->conf['databasefields'] as $databaseField) {
 			if ($databaseField['field'] === $fieldName) {
 				return $databaseField['label'];
 			}
 		}
+
 		return '';
 	}
 
 	/**
 	 * Ermittelt den Fehlertyp aus dem Feldnamen.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$valueCheck
-	 * @return	string		$type
+	 * @param string $fieldName
+	 * @param array $valueCheck
+	 * @return  string      $type
 	 */
-	public function getErrorType($fieldName, $valueCheck) {
-		$type = '';
-
+	public function getErrorType($fieldName, $valueCheck): string
+	{
 		if (array_key_exists($fieldName, $valueCheck) && is_string($valueCheck[$fieldName])) {
-			$type = $valueCheck[$fieldName];
+			return $valueCheck[$fieldName];
 		}
 
-		return $type;
+		return '';
 	}
 
 	/**
 	 * Ermittelt die Fehlerklasse aus dem Feldnamen.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$valueCheck
-	 * @return	string		$class
+	 * @param string $fieldName
+	 * @param array $valueCheck
+	 * @return  string      $class
 	 */
-	public function getErrorClass($fieldName, $valueCheck) {
-		$class = '';
-
+	public function getErrorClass($fieldName, $valueCheck): string
+	{
 		// Extra Error Label ermitteln.
-		if (($errorType = $this->getErrorType($fieldName, $valueCheck))) {
-			$class = ' error error-' . $errorType;
+		if ($errorType = $this->getErrorType($fieldName, $valueCheck)) {
+			return ' error error-' . $errorType;
 		}
 
-		return $class;
+		return '';
 	}
 
 	/**
 	 * Ermittelt das Fehlerlabel aus dem Feldnamen.
 	 *
-	 * @param	string		$fieldName
-	 * @param	array		$valueCheck
-	 * @return	string		$label
+	 * @param array $valueCheck
+	 * @return  string      $label
 	 */
-	public function getErrorLabel($fieldName, $valueCheck) {
-		$label = '';
-
+	public function getErrorLabel(string $fieldName, $valueCheck): string
+	{
 		// Extra Error Label ermitteln.
-		if (($errorType = $this->getErrorType($fieldName, $valueCheck))) {
-			$label = '<div class="error-label error-' . $fieldName . '">' . $this->getLabel($fieldName . '_error_' . $errorType, FALSE) . '</div>';
+		if ($errorType = $this->getErrorType($fieldName, $valueCheck)) {
+			return '<div class="error-label error-' . $fieldName . '">' . $this->getLabel($fieldName . '_error_' . $errorType, false) . '</div>';
 		}
 
-		return $label;
+		return '';
 	}
 
 	/**
 	 * Ueberprueft ob das uebergebene Feld benoetigt wird um erfolgreich zu speichern.
-	 *
-	 * @param	string		$fieldName
-	 * @return	string
 	 */
-	public function isRequiredField($fieldName) {
-		if (array_intersect(array($fieldName, tx_datamintsfeuser_utils::getSpecialFieldKey($fieldName)), $this->arrRequiredFields)) {
+	public function isRequiredField(string $fieldName): string
+	{
+		if (array_intersect([$fieldName, $this->utils->getSpecialFieldKey($fieldName)], $this->arrRequiredFields)) {
 			return '<span class="star">*</span>';
-		} else {
-			return '';
 		}
+
+		return '';
 	}
 
 	/**
 	 * Ueberprüft ob es für die uebergebene Tabelle eine andere Labelkonfiguration gibt.
 	 * Dieses LabelField wird dann benutzt, um für Listen Elmente das richtige Label zu holen.
 	 *
-	 * @param	string		$table
-	 * @return	string		$labelFieldName
+	 * @param string $table
+	 * @return  string      $labelFieldName
 	 */
-	public function getTableLabelFieldName($table) {
-		$labelFieldName = $GLOBALS['TCA'][$table]['ctrl']['label'];
-
+	public function getTableLabelFieldName($table)
+	{
 		if ($this->conf['tablelabelfield.'][$table]) {
-			$labelFieldName = $this->conf['tablelabelfield.'][$table];
+			return $this->conf['tablelabelfield.'][$table];
 		}
 
-		return $labelFieldName;
+		return $GLOBALS['TCA'][$table]['ctrl']['label'];
 	}
 
 	/**
 	 * Erstellt GET-Parameter fuer vordefinierte Parameter die uebergeben wurden.
 	 *
-	 * @return	array		$arrParams
+	 * @return  array       $arrParams
 	 */
-	public function getHiddenParamsArray() {
-		$arrParams = array();
+	public function getHiddenParamsArray()
+	{
+		$arrParams = [];
 
 		foreach ($this->arrHiddenParams as $paramName) {
-			$arrParamNameParts = GeneralUtility::trimExplode('|', $paramName, TRUE);
+			$arrParamNameParts = GeneralUtility::trimExplode('|', $paramName, true);
 
 			$this->getParamArrayFromParamNameParts($arrParamNameParts, $_REQUEST, $arrParams);
 		}
@@ -2987,14 +2924,15 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Erstellt Hidden Fields fuer vordefinierte Parameter die uebergeben wurden.
 	 *
-	 * @return	string		$content
+	 * @return  string      $content
 	 */
-	public function getHiddenParamsHiddenFields() {
+	public function getHiddenParamsHiddenFields(): string
+	{
 		$content = '';
 
 		foreach ($this->arrHiddenParams as $paramName) {
-			$arrParams = array();
-			$arrParamNameParts = GeneralUtility::trimExplode('|', $paramName, TRUE);
+			$arrParams = [];
+			$arrParamNameParts = GeneralUtility::trimExplode('|', $paramName, true);
 
 			$this->getParamArrayFromParamNameParts($arrParamNameParts, $_REQUEST, $arrParams);
 
@@ -3009,7 +2947,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 				// Wenn der letzte Pfad-Teil erreicht ist, das Hidden Field ausgeben.
 				if (!$arrParamNameParts) {
-					$arrParamNameParts = GeneralUtility::trimExplode('|', $paramName, TRUE);
+					$arrParamNameParts = GeneralUtility::trimExplode('|', $paramName, true);
 
 					$hiddenFieldName = array_shift($arrParamNameParts);
 
@@ -3017,7 +2955,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 						$hiddenFieldName .= '[' . implode('][', $arrParamNameParts) . ']';
 					}
 
-					$content .= '<input type="hidden" name="' . $hiddenFieldName . '" value="' . htmlspecialchars($arrParams[$paramNamePart]) . '" />';
+					$content .= '<input type="hidden" name="' . $hiddenFieldName . '" value="' . htmlspecialchars((string)$arrParams[$paramNamePart]) . '" />';
 
 					break;
 				}
@@ -3033,12 +2971,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	 * Durchsucht ein mehrdimensionales Array mit dem uebergebenen Pfad-Array, und uebernimmt den gefundenen Wert gesaubert in ein neues mehrdimensionales Array.
 	 * Das Pfad-Array ist ein eindimensinales Array, dessen fortlaufende Werte die jeweilige Ebene im durchsuchten und geschriebenen Array repraesentieren!
 	 *
-	 * @param	array		$arrParamNameParts
-	 * @param	array		$arrRequest // Call by reference: Das Array in dem gesucht wird.
-	 * @param	array		$arrParams // Call by reference: Das Array in das der Pfad und der Wert geschrieben werden.
-	 * @return	void
+	 * @param array $arrParamNameParts
+	 * @param array $arrRequest // Call by reference: Das Array in dem gesucht wird.
+	 * @param array $arrParams // Call by reference: Das Array in das der Pfad und der Wert geschrieben werden.
 	 */
-	public function getParamArrayFromParamNameParts($arrParamNameParts, &$arrRequest, &$arrParams) {
+	public function getParamArrayFromParamNameParts($arrParamNameParts, &$arrRequest, &$arrParams): void
+	{
 		while (count($arrParamNameParts) > 0) {
 			$paramNamePart = array_shift($arrParamNameParts);
 
@@ -3049,7 +2987,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 			// Wenn der letzte Pfad-Teil erreicht ist, diesen uebertragen und saubern.
 			if (!$arrParamNameParts) {
-				$arrParams[$paramNamePart] = htmlspecialchars_decode($arrRequest[$paramNamePart]);
+				$arrParams[$paramNamePart] = htmlspecialchars_decode((string)$arrRequest[$paramNamePart]);
 
 				break;
 			}
@@ -3057,7 +2995,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 			// Wenn noch nicht der letzte Pfad-Teil erreicht ist, und der aktuelle Pfad-Teil ein Array ist, weiter machen!
 			if ($arrParamNameParts && is_array($arrRequest[$paramNamePart])) {
 				if (!isset($arrParams[$paramNamePart])) {
-					$arrParams[$paramNamePart] = array();
+					$arrParams[$paramNamePart] = [];
 				}
 
 				$arrParams = &$arrParams[$paramNamePart];
@@ -3073,24 +3011,24 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Holt Konfigurationen aus der Flexform (Tab-bedingt) und ersetzt diese pro Konfiguration in der TypoScript Konfiguration.
 	 *
-	 * @return	void
-	 * @global	$this->conf
-	 * @global	$this->extConf
-	 * @global	$this->arrUsedFields
-	 * @global	$this->arrUniqueFields
-	 * @global	$this->arrRequiredFields
-	 * @global	$this->arrHiddenParams
+	 * @global  $this ->conf
+	 * @global  $this ->extConf
+	 * @global  $this ->arrUsedFields
+	 * @global  $this ->arrUniqueFields
+	 * @global  $this ->arrRequiredFields
+	 * @global  $this ->arrHiddenParams
 	 */
-	public function determineConfiguration() {
-		$flexConf = array();
+	public function determineConfiguration(): void
+	{
+		$flexConf = [];
 
 		// Extension Konfiguration ermitteln.
 		$this->extConf = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'][$this->extKey];
 
 		// Alle Tabs der Flexformkonfiguration durchgehn.
 		if (is_array($this->cObj->data['pi_flexform']['data'])) {
-			foreach ($this->cObj->data['pi_flexform']['data'] as $tabKey => $_) {
-				$flexConf = tx_datamintsfeuser_utils::getFlexformConfigurationFromTab($this->cObj->data['pi_flexform'], $tabKey, $flexConf);
+			foreach (array_keys($this->cObj->data['pi_flexform']['data']) as $tabKey) {
+				$flexConf = $this->utils->getFlexformConfigurationFromTab($this->cObj->data['pi_flexform'], $tabKey, $flexConf);
 			}
 		}
 
@@ -3101,7 +3039,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				$this->conf[$key] = $val;
 			} else {
 				// Alle anderen Konfigurationen...
-				$this->conf = tx_datamintsfeuser_utils::setFlexformConfigurationValue($key, $val, $this->conf);
+				$this->conf = $this->utils->setFlexformConfigurationValue($key, $val, $this->conf);
 			}
 		}
 
@@ -3111,23 +3049,23 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		}
 
 		// Konfigurationen, die an mehreren Stellen benoetigt werden, in globales Array schreiben.
-		$this->arrUsedFields = GeneralUtility::trimExplode(',', $this->conf['usedfields'], TRUE);
-		$this->arrUniqueFields = array_unique(GeneralUtility::trimExplode(',', $this->conf['uniquefields'], TRUE));
-		$this->arrRequiredFields = array_unique(GeneralUtility::trimExplode(',', $this->conf['requiredfields'], TRUE));
-		$this->arrHiddenParams = array_unique(GeneralUtility::trimExplode(',', $this->conf['hiddenparams'], TRUE));
+		$this->arrUsedFields = GeneralUtility::trimExplode(',', $this->conf['usedfields'], true);
+		$this->arrUniqueFields = array_unique(GeneralUtility::trimExplode(',', $this->conf['uniquefields'], true));
+		$this->arrRequiredFields = array_unique(GeneralUtility::trimExplode(',', $this->conf['requiredfields'], true));
+		$this->arrHiddenParams = array_unique(GeneralUtility::trimExplode(',', $this->conf['hiddenparams'], true));
 
 		// Konfigurationen die immer gelten setzten (Feldnamen sind fuer konfigurierte Felder und fuer input Felder).
-		$this->arrRequiredFields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyCaptcha);
-		$this->arrRequiredFields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyPasswordconfirmation);
+		$this->arrRequiredFields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyCaptcha);
+		$this->arrRequiredFields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyPasswordconfirmation);
 	}
 
 	/**
 	 * Ueberschreibt eventuell vorhandene TypoScript Konfigurationen oder Flexform Konfigurationen mit den Konfigurationen aus IRRE.
 	 *
-	 * @return	void
-	 * @global	$this->conf
+	 * @global  $this ->conf
 	 */
-	public function determineIrreConfiguration() {
+	public function determineIrreConfiguration(): void
+	{
 		if (!is_array($this->conf['databasefields'])) {
 			return;
 		}
@@ -3138,12 +3076,12 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		$passwordconfirmationCounter = 0;
 		$resendactivationCounter = 0;
 		$captchaCounter = 0;
-		$usedfields = array();
-		$requiredfields = array();
-		$uniquefields = array();
+		$usedfields = [];
+		$requiredfields = [];
+		$uniquefields = [];
 
 		$firstkey = key($this->conf['databasefields']);
-
+		$locale = $this->getLocale();
 		foreach ($this->conf['databasefields'] as $position => $field) {
 			// Datenbankfelder abarbeiten.
 			if ($field['field']) {
@@ -3161,29 +3099,29 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 				// Label setzten falls angegeben.
 				if ($field['label']) {
-					$this->conf['_LOCAL_LANG.'][$this->frontendController->lang . '.'][$field['field']] = $field['label'];
+					$this->conf['_LOCAL_LANG.'][$locale . '.'][$field['field']] = $field['label'];
 				}
 			}
 
 			// Submit Button abarbeiten.
 			if (isset($field[self::specialfieldKeySubmit])) {
-				$usedfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeySubmit);
+				$usedfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeySubmit);
 
 				// Label setzten falls angegeben.
 				if ($field[self::specialfieldKeySubmit]) {
-					$this->conf['_LOCAL_LANG.'][$this->frontendController->lang . '.'][self::specialfieldKeySubmit . '_' . $this->conf['showtype']] = $field[self::specialfieldKeySubmit];
+					$this->conf['_LOCAL_LANG.'][$locale . '.'][self::specialfieldKeySubmit . '_' . $this->conf['showtype']] = $field[self::specialfieldKeySubmit];
 				}
 			}
 
 			// Captcha Feld abarbeiten.
 			if (isset($field[self::specialfieldKeyCaptcha]) && $captchaCounter < 1) {
-				$usedfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyCaptcha);
+				$usedfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyCaptcha);
 
 				// Requiredfields wird in "determineConfiguration" immer gesetzt!
 
 				// Label setzten falls angegeben.
 				if ($field[self::specialfieldKeyCaptcha]) {
-					$this->conf['_LOCAL_LANG.'][$this->frontendController->lang . '.'][self::specialfieldKeyCaptcha] = $field[self::specialfieldKeyCaptcha];
+					$this->conf['_LOCAL_LANG.'][$locale . '.'][self::specialfieldKeyCaptcha] = $field[self::specialfieldKeyCaptcha];
 				}
 
 				$captchaCounter++;
@@ -3191,7 +3129,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 			// Infoitems abarbeiten.
 			if (isset($field[self::specialfieldKeyInfoitem])) {
-				$usedfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyInfoitem);
+				$usedfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyInfoitem);
 
 				// Falls in dem Feld etwas drinn steht.
 				if ($field[self::specialfieldKeyInfoitem]) {
@@ -3207,7 +3145,7 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 				if ($position == $firstkey) {
 					$this->conf['legends.']['1'] = $field[self::specialfieldKeySeparator];
 				} else {
-					$usedfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeySeparator);
+					$usedfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeySeparator);
 
 					// Falls in dem Feld etwas drinn steht.
 					if ($field[self::specialfieldKeySeparator]) {
@@ -3220,16 +3158,16 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 			// Userdelete Checkbox abarbeiten.
 			if (isset($field[self::specialfieldKeyUserdelete]) && $userdeleteCounter < 1) {
-				$usedfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyUserdelete);
+				$usedfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyUserdelete);
 
 				// Requiredfields erweitern.
 				if ($field['required']) {
-					$requiredfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyUserdelete);
+					$requiredfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyUserdelete);
 				}
 
 				// Label setzten falls angegeben.
 				if ($field[self::specialfieldKeyUserdelete]) {
-					$this->conf['_LOCAL_LANG.'][$this->frontendController->lang . '.'][self::specialfieldKeyUserdelete] = $field[self::specialfieldKeyUserdelete];
+					$this->conf['_LOCAL_LANG.'][$locale . '.'][self::specialfieldKeyUserdelete] = $field[self::specialfieldKeyUserdelete];
 				}
 
 				$userdeleteCounter++;
@@ -3237,16 +3175,16 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 			// Resendactivation Feld abarbeiten.
 			if (isset($field[self::specialfieldKeyResendactivation]) && $resendactivationCounter < 1) {
-				$usedfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyResendactivation);
+				$usedfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyResendactivation);
 
 				// Requiredfields erweitern.
 				if ($field['required']) {
-					$requiredfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyResendactivation);
+					$requiredfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyResendactivation);
 				}
 
 				// Label setzten falls angegeben.
 				if ($field[self::specialfieldKeyResendactivation]) {
-					$this->conf['_LOCAL_LANG.'][$this->frontendController->lang . '.'][self::specialfieldKeyResendactivation] = $field[self::specialfieldKeyResendactivation];
+					$this->conf['_LOCAL_LANG.'][$locale . '.'][self::specialfieldKeyResendactivation] = $field[self::specialfieldKeyResendactivation];
 				}
 
 				$resendactivationCounter++;
@@ -3254,13 +3192,13 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 
 			// Passwordconfirmation Feld abarbeiten.
 			if (isset($field[self::specialfieldKeyPasswordconfirmation]) && $passwordconfirmationCounter < 1) {
-				$usedfields[] = tx_datamintsfeuser_utils::getSpecialFieldKey(self::specialfieldKeyPasswordconfirmation);
+				$usedfields[] = $this->utils->getSpecialFieldKey(self::specialfieldKeyPasswordconfirmation);
 
 				// Requiredfields wird in "determineConfiguration" immer gesetzt!
 
 				// Label setzten falls angegeben.
 				if ($field[self::specialfieldKeyPasswordconfirmation]) {
-					$this->conf['_LOCAL_LANG.'][$this->frontendController->lang . '.'][self::specialfieldKeyPasswordconfirmation] = $field[self::specialfieldKeyPasswordconfirmation];
+					$this->conf['_LOCAL_LANG.'][$locale . '.'][self::specialfieldKeyPasswordconfirmation] = $field[self::specialfieldKeyPasswordconfirmation];
 				}
 
 				$passwordconfirmationCounter++;
@@ -3276,10 +3214,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Ermittelt die komplette oder die uebergebene Unter-Konfiguration des aktuellen Anzeigetyps.
 	 *
-	 * @param	string		$subConfig
-	 * @return	array
+	 * @param string $subConfig
+	 * @return  array
 	 */
-	public function getConfigurationByShowtype($subConfig = '') {
+	public function getConfigurationByShowtype($subConfig = '')
+	{
 		if (!$subConfig) {
 			return $this->conf[$this->conf['showtype'] . '.'];
 		}
@@ -3290,9 +3229,11 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 	/**
 	 * Gibt die komplette Validierungskonfiguration fuer die JavaScript Frontendvalidierung zurueck.
 	 *
-	 * @return	string		$configuration
+	 * @return  string      $configuration
+	 * @throws \Doctrine\DBAL\Exception
 	 */
-	public function getJSValidationConfiguration() {
+	public function getJSValidationConfiguration(): string
+	{
 		// Hier eine fertig generierte Konfiguration:
 		// datamints_feuser_config[11]=[];
 		// datamints_feuser_config[11]["username"]=[];
@@ -3309,43 +3250,52 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 		// datamints_feuser_config[11]["password"]["required"]="Es muss ein Passwort angegeben werden!";
 		// datamints_feuser_inputids[11] = new Array("tx_datamintsfeuser_pi1_username", "tx_datamintsfeuser_pi1_password", "tx_datamintsfeuser_pi1_password_rep");
 
-		$arrValidationFields = array();
+		$arrValidationFields = [];
 		$configuration = $this->extKey . '_config[' . $this->contentId . ']=[];';
 
 		// Bei jedem Durchgang der Schleife wird die Konfiguration fuer ein Datenbankfeld geschrieben. Ausnahmen sind hierbei Passwordfelder.
 		// Gleichzeitig werden die ID's der Felder in ein Array geschrieben und am Ende zusammen gesetzt "inputids".
 		foreach ($this->arrUsedFields as $fieldName) {
-			if (!(is_array($this->feUsersTca['columns'][$fieldName]) && is_array($this->conf['validate.'][$fieldName . '.']) || in_array($fieldName, $this->arrRequiredFields))) {
+			if (!(is_array($this->feUsersTca['columns'][$fieldName]) && is_array($this->conf['validate.'][$fieldName . '.'])) && !in_array($fieldName, $this->arrRequiredFields)) {
 				continue;
 			}
 
 			$fieldConfig = $this->feUsersTca['columns'][$fieldName]['config'];
-			$cleanedFieldName = tx_datamintsfeuser_utils::getSpecialFieldName($fieldName);
+			$cleanedFieldName = $this->utils->getSpecialFieldName($fieldName);
 
 			// Die Felder bei denen Aktionen statt finden sollen (Event Listener) ermitteln.
 			$itemCount = 0;
 			$itemIdSuffix = 'item';
 
 			// Die Anzahl der Felder die ausgegeben wurden (falls mehrere Felder ausgegeben, also kein Select und nur mehr als eine Checkbox).
-			if ($fieldConfig['type'] == 'radio'
-					|| ($fieldConfig['type'] == 'check' && count((array)$fieldConfig['items']) > 1)
-					|| ($fieldConfig['type'] == 'select' && $fieldConfig['renderMode'] == 'checkbox')) {
+			if (
+				$fieldConfig['type'] == 'radio'
+				|| ($fieldConfig['type'] == 'check' && count((array)$fieldConfig['items']) > 1)
+				|| ($fieldConfig['type'] == 'select' && $fieldConfig['renderMode'] == 'checkbox')
+			) {
 				$itemCount = count((array)$fieldConfig['items']);
 			}
 
 			// Die Anzahl der Felder die ausgegeben wurden, wird beim Typ DB ueber einen Count auf die erlaubten Tabellen ermittelt.
 			if ($fieldConfig['type'] == 'group' && $fieldConfig['internal_type'] == 'db') {
-				$arrAllowed = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], TRUE);
+				$arrAllowed = GeneralUtility::trimExplode(',', $fieldConfig['allowed'], true);
 
 				foreach ($arrAllowed as $table) {
 					if (!$GLOBALS['TCA'][$table]) {
 						continue;
 					}
 
-					$res = $this->databaseConnection->exec_SELECTquery('COUNT(*) as count', $table, '1 ' . $this->pageRepository->enableFields($table));
-					$row = $this->databaseConnection->sql_fetch_assoc($res);
 
-					$itemCount += $row['count'];
+
+
+
+
+					//$res = $this->databaseConnection->exec_SELECTquery('COUNT(*) as count', $table, '1 ' . $this->pageRepository->enableFields($table));
+					//$row = $this->databaseConnection->sql_fetch_assoc($res);
+
+					$count = $this->getRowCountFromTable($table);
+
+					$itemCount += $count;
 				}
 			}
 
@@ -3383,7 +3333,6 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 					$validationValue = '"' . str_replace('"', '\\"', $val) . '"';
 
 					switch ($key) {
-
 						case 'type':
 							if ($val == 'password') {
 								$labelKey = self::validationerrorKeyEqual;
@@ -3400,28 +3349,46 @@ class tx_datamintsfeuser_pi1 extends \TYPO3\CMS\Frontend\Plugin\AbstractPlugin {
 							$validationValue = $val;
 
 							break;
-
 					}
 
 					$configuration .= $this->extKey . '_config[' . $this->contentId . ']["' . $fieldName . '"]["validation"]["' . str_replace('length', 'size', $validationKey) . '"]=' . $validationValue . ';';
 
-					$configuration .= $this->extKey . '_config[' . $this->contentId . ']["' . $fieldName . '"]["' . str_replace('length', 'size', $labelKey) . '"]="' . str_replace('"', '\\"', $this->getLabel($fieldName . '_error_' . $labelKey, FALSE)) . '";';
+					$configuration .= $this->extKey . '_config[' . $this->contentId . ']["' . $fieldName . '"]["' . str_replace('length', 'size', $labelKey) . '"]="' . str_replace('"', '\\"', $this->getLabel($fieldName . '_error_' . $labelKey, false)) . '";';
 				}
 			}
 
 			// Required Konfiguration ermitteln.
 			if (in_array($fieldName, $this->arrRequiredFields)) {
-				$configuration .= $this->extKey . '_config[' . $this->contentId . ']["' . $cleanedFieldName . '"]["required"]="' . str_replace('"', '\\"', $this->getLabel($cleanedFieldName . '_error_' . self::validationerrorKeyRequired, FALSE)) . '";';
+				$configuration .= $this->extKey . '_config[' . $this->contentId . ']["' . $cleanedFieldName . '"]["required"]="' . str_replace('"', '\\"', $this->getLabel($cleanedFieldName . '_error_' . self::validationerrorKeyRequired, false)) . '";';
 			}
 		}
 
-		$configuration .= $this->extKey . '_inputids[' . $this->contentId . ']=["' . implode('","', $arrValidationFields) . '"];';
-
-		return $configuration;
+		return $configuration . ($this->extKey . '_inputids[' . $this->contentId . ']=["' . implode('","', $arrValidationFields) . '"];');
 	}
 
-}
+	protected function getLocale(): string
+	{
+		$site = $GLOBALS['TYPO3_REQUEST']->getAttribute('site');
+		$context = GeneralUtility::makeInstance(Context::class);
+		assert($context instanceof Context);
+		$currentLanguageId = $context->getPropertyFromAspect('language', 'id');
+		$language = $site->getLanguageById($currentLanguageId);
+		assert($language instanceof SiteLanguage);
+		return $language->getHreflang();
+	}
 
-if (defined('TYPO3_MODE') && $TYPO3_CONF_VARS[TYPO3_MODE]['XCLASS']['ext/datamints_feuser/pi1/class.tx_datamintsfeuser_pi1.php']) {
-	include_once($TYPO3_CONF_VARS[TYPO3_MODE]['XCLASS']['ext/datamints_feuser/pi1/class.tx_datamintsfeuser_pi1.php']);
+	/**
+	 * @throws \Doctrine\DBAL\Exception
+	 */
+	private function getRowCountFromTable(string $table): int
+	{
+		$queryBuilder = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
+		$queryBuilder
+			->selectLiteral('COUNT(uid) as count')
+			->from($table);
+
+		$row = $queryBuilder->executeQuery()->fetchAssociative();
+
+		return (int)$row['count'];
+	}
 }

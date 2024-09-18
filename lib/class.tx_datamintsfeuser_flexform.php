@@ -28,32 +28,28 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 /**
  * Class 'tx_datamintsfeuser_flexform' which gets all field names from the "fe_users".
  *
- * @author	Bernhard baumgartl <b.baumgartl@datamints.com>
- * @package	TYPO3
- * @subpackage	tx_datamintsfeuser
+ * @author  Bernhard baumgartl <b.baumgartl@datamints.com>
+ * @package TYPO3
+ * @subpackage  tx_datamintsfeuser
  */
-class tx_datamintsfeuser_flexform {
+class tx_datamintsfeuser_flexform
+{
+    /**
+     * The getFields method is used to get the "fe_users" field names into the flexform of the plugin.
+     *
+     * @param   array       $config: The fields selected.
+     * @return  array       $config
+     */
+    public function getFieldNames(array $config): array
+    {
+        $fieldList = [];
 
-	/**
-	 * The getFields method is used to get the "fe_users" field names into the flexform of the plugin.
-	 *
-	 * @param	array		$config: The fields selected.
-	 * @return	array		$config
-	 */
-	public function getFieldNames($config) {
-		$fieldList = array();
+        foreach ($GLOBALS['TCA']['fe_users']['columns'] as $key => $_) {
+            $fieldList[] = [$key, $key];
+        }
 
-		foreach ($GLOBALS['TCA']['fe_users']['columns'] as $key => $_){
-			$fieldList[] = array($key, $key);
-		}
+        $config['items'] = array_merge($config['items'], $fieldList);
 
-		$config['items'] = array_merge($config['items'], $fieldList);
-
-		return $config;
-	}
-
-}
-
-if (defined('TYPO3_MODE') && $TYPO3_CONF_VARS[TYPO3_MODE]['XCLASS']['ext/datamints_feuser/lib/class.tx_datamintsfeuser_flexform.php']) {
-	include_once($TYPO3_CONF_VARS[TYPO3_MODE]['XCLASS']['ext/datamints_feuser/lib/class.tx_datamintsfeuser_flexform.php']);
+        return $config;
+    }
 }

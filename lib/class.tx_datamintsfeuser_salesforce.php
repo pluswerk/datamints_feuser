@@ -28,84 +28,70 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 /**
  * Library 'Salesforce' for the 'datamints_feuser' extension.
  *
- * @author	Bernhard Baumgartl <b.baumgartl@datamints.com>
- * @package	TYPO3
- * @subpackage	tx_datamintsfeuser
+ * @author  Bernhard Baumgartl <b.baumgartl@datamints.com>
+ * @package TYPO3
+ * @subpackage  tx_datamintsfeuser
  */
-class tx_datamintsfeuser_salesforce {
+class tx_datamintsfeuser_salesforce
+{
+    const alreadyExecuted = 'userAlreadyAddedToSalesforceInThisSession';
 
-	const alreadyExecuted = 'userAlreadyAddedToSalesforceInThisSession';
+    /**
+     * Maps the typo3 fields to the salesforce fields and submits it to salesforce.
+     * This will only be done if the user is completely activated!
+     *
+     * @param   object      $pObj
+     */
+    public function main(array $params, $pObj): void
+    {
+        if ($GLOBALS[self::alreadyExecuted]) {
+            return;
+        }
 
-	/**
-	 * Maps the typo3 fields to the salesforce fields and submits it to salesforce.
-	 * This will only be done if the user is completely activated!
-	 *
-	 * @param	array		$params
-	 * @param	object		$pObj
-	 * @return	null
-	 */
-	public function main($params, $pObj) {
-		if ($GLOBALS[self::alreadyExecuted]) {
-			return;
-		}
+        if (!$pObj->conf['salesforce.'] || !$pObj->conf['salesforce.']['enable']) {
+            return;
+        }
 
-		if (!$pObj->conf['salesforce.'] || !$pObj->conf['salesforce.']['enable']) {
-			return;
-		}
+        if ($params['variables']['markerArray']['tx_datamintsfeuser_approval_level'] > 0) {
+            return;
+        }
 
-		if ($params['variables']['markerArray']['tx_datamintsfeuser_approval_level'] > 0) {
-			return;
-		}
+        if (!$pObj->conf['salesforce.']['target'] || !$pObj->conf['salesforce.']['oid']) {
+            return;
+        }
 
-		if (!$pObj->conf['salesforce.']['target'] || !$pObj->conf['salesforce.']['oid']) {
-			return;
-		}
+        $fields = ['oid' => $pObj->conf['salesforce.']['oid']];
 
-		$fields = array(
-			'oid' => $pObj->conf['salesforce.']['oid']
-		);
-
-		$mappingFields = self::getMappingFields($pObj->conf['salesforce.']['mapping.'], $params['variables']['markerArray']);
+        $mappingFields = self::getMappingFields($pObj->conf['salesforce.']['mapping.'], $params['variables']['markerArray']);
 
 
-		$resource = curl_init();
+        $resource = curl_init();
 
-		curl_setopt_array($resource, array(
-			CURLOPT_URL => $pObj->conf['salesforce.']['target'],
-			CURLOPT_POST => TRUE,
-			CURLOPT_POSTFIELDS => http_build_query(array_merge($mappingFields, $fields)),
-			CURLOPT_FAILONERROR => TRUE
-		));
+        curl_setopt_array($resource, [CURLOPT_URL => $pObj->conf['salesforce.']['target'], CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query(array_merge($mappingFields, $fields)), CURLOPT_FAILONERROR => true]);
 
-		$GLOBALS[self::alreadyExecuted] = curl_exec($resource);
+        $GLOBALS[self::alreadyExecuted] = curl_exec($resource);
 
-		curl_close($resource);
+        curl_close($resource);
+    }
 
-		return;
-	}
+    /**
+     * Gets the mapped fields.
+     *
+     * @param   array       $mappings
+     * @param   array       $variables
+     * @return  array       $fields
+     */
+    public function getMappingFields($mappings, $variables): array
+    {
+        $fields = [];
 
-	/**
-	 * Gets the mapped fields.
-	 *
-	 * @param	array		$mappings
-	 * @param	array		$variables
-	 * @return	array		$fields
-	 */
-	public function getMappingFields($mappings, $variables) {
-		$fields = array();
+        $cObj = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\ContentObject\\ContentObjectRenderer');
+        $cObj->data = $variables;
 
-		$cObj = GeneralUtility::makeInstance('TYPO3\\CMS\\Frontend\\ContentObject\\ContentObjectRenderer');
-		$cObj->data = $variables;
+        foreach ($mappings as $field => $stdWrapConfig) {
+            $fields[rtrim($field, '.')] = $cObj->stdWrap('', $stdWrapConfig);
+        }
 
-		foreach ($mappings as $field => $stdWrapConfig) {
-			$fields[rtrim($field, '.')] = $cObj->stdWrap('', $stdWrapConfig);
-		}
-
-		return $fields;
-	}
-
-}
-
-if (defined('TYPO3_MODE') && $TYPO3_CONF_VARS[TYPO3_MODE]['XCLASS']['ext/datamints_feuser/lib/class.tx_datamintsfeuser_salesforce.php']) {
-	include_once($TYPO3_CONF_VARS[TYPO3_MODE]['XCLASS']['ext/datamints_feuser/lib/class.tx_datamintsfeuser_salesforce.php']);
+        return $fields;
+    }
 }
