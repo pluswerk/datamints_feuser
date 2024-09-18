@@ -505,7 +505,7 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
             $validate = $this->conf['validate.'][$fieldName . '.'];
 
             // Besonderes Feld das fest in der Extension verbaut ist (passwordconfirmation), und ueberprueft werden soll.
-            if ($fieldName == self::specialfieldKeyPasswordconfirmation && $this->conf['showtype'] == self::showtypeKeyEdit && !$this->utils->checkPassword($value, $this->frontendController->fe_user->user['password'])) {
+            if ($fieldName == self::specialfieldKeyPasswordconfirmation && $this->conf['showtype'] == self::showtypeKeyEdit && !$this->isPasswordSameAsCurrentFeUserPassword($value)) {
                 $valueCheck[$fieldName] = self::validationerrorKeyValid;
             }
 
@@ -1090,12 +1090,13 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
         return true;
     }
 
-    /**
-     * Aktualisiert einen vorhandenen User, anhand des uebergebenen Arrays.
-     *
-     * @param array $arrUpdate // Call by reference: Das Array mit den bearbeiteten Userdaten.
-     * @return  array       $arrMode
-     */
+	/**
+	 * Aktualisiert einen vorhandenen User, anhand des uebergebenen Arrays.
+	 *
+	 * @param array $arrUpdate // Call by reference: Das Array mit den bearbeiteten Userdaten.
+	 * @return  array       $arrMode
+	 * @throws InvalidPasswordHashException
+	 */
     public function doUserEdit(array &$arrUpdate): array
     {
         $arrMode = [];
@@ -1115,8 +1116,8 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
         $this->insertRelationInserts($this->userId, $this->getRelationInserts($arrUpdate));
 
         // Der User hat seine Daten editiert.
-        //  $this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, $arrUpdate);
-        $this->repository->update($this->userId, $arrUpdate);
+			$arrUpdate = $this->hashPasswordInInputValues($arrUpdate);
+			$this->repository->update($this->userId, $arrUpdate);
         // Destroy sessions if a password field was submitted!
         if (method_exists(SessionManager::class, 'invalidateAllSessionsByUserId')) {
             $passwordFields = array_filter(array_map(fn(array $column): bool => in_array('password', GeneralUtility::trimExplode(',', $column['config']['eval'], true)), $this->feUsersTca['columns']));
@@ -1161,7 +1162,7 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
         } else {
             // Den User als geloescht markieren.
             //$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, ['tstamp' => time(), 'deleted' => '1']);
-            $this->repository->update($this->userId, ['tstamp' => time(), 'deleted' => '1']);
+            $this->repository->update($this->userId, ['tstamp' => time(), 'deleted' => 1]);
         }
     }
 
@@ -1353,6 +1354,7 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
             case self::showtypeKeyRegister:
             case 'doubleoptin':
                 // Login vormerken.
+								// TODO check security of the already existing autologin feature
                 if ($params['autologin']) {
                     $autologin = true;
                 }
@@ -1453,6 +1455,13 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
         return $passwordHasher->getHashedPassword($plaintextPassword);
     }
 
+		protected function isPasswordSameAsCurrentFeUserPassword(string $plaintextPassword): bool
+		{
+			$passwordHashFactory = GeneralUtility::makeInstance(PasswordHashFactory::class);
+			$passwordHasher = $passwordHashFactory->getDefaultHashInstance('FE');
+			return $passwordHasher->checkPassword($plaintextPassword, $this->frontendController->fe_user->user['password']);
+		}
+
     /**
      * Ueberprueft ob die Linkbestaetigung gueltig ist und aktiviert gegebenenfalls den User.
      * @throws \Doctrine\DBAL\Exception
@@ -1501,7 +1510,7 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
         if ($this->piVars[$this->contentId][self::submitparameterKeyHash] == $hashApproval && $row['tx_datamintsfeuser_approval_level'] == 1) {
             // User aktivieren.
             //$this->databaseConnection->exec_UPDATEquery('fe_users', 'uid = ' . $this->userId, ['tstamp' => time(), 'disable' => '0', 'tx_datamintsfeuser_approval_level' => '0']);
-            $this->repository->update($this->userId, ['tstamp' => time(), 'disable' => '0', 'tx_datamintsfeuser_approval_level' => '0']);
+            $this->repository->update($this->userId, ['tstamp' => time(), 'disable' => 0, 'tx_datamintsfeuser_approval_level' => 0]);
             // Registrierungs E-Mail schicken.
             if ($this->getConfigurationByShowtype('sendadminmail')) {
                 $this->sendMail($this->userId, 'registration', true, $this->getConfigurationByShowtype());

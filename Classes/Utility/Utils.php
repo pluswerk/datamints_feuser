@@ -27,6 +27,7 @@ namespace Datamints\Feuser\Utility;
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
 
+use ReflectionMethod;
 use TYPO3\CMS\Core\Crypto\PasswordHashing\PasswordHashFactory;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
 use TYPO3\CMS\Core\LinkHandling\LinkService;
@@ -224,33 +225,6 @@ class Utils implements SingletonInterface
         }
 
         return $arrPassword;
-    }
-
-    /**
-     * Ueberprueft anhand der aktuellen Verschluesselungsextension, ob das uebergebene unverschluesselte Passwort mit dem uebergebenen verschluesselten Passwort uebereinstimmt.
-     *
-     * @return  boolean     $check
-     */
-    public function checkPassword(string $submittedPassword, string $originalPassword)
-    {
-        $check = false;
-
-        // Wenn "saltedpasswords" installiert ist wird deren Konfiguration geholt, und je nach Einstellung das Password ueberprueft.
-        if (ExtensionManagementUtility::isLoaded('saltedpasswords') && $GLOBALS['TYPO3_CONF_VARS']['FE']['loginSecurityLevel']) {
-            $saltedpasswords = SaltedPasswordsUtility::returnExtConf();
-
-            if ($saltedpasswords['enabled']) {
-                $tx_saltedpasswords = GeneralUtility::makeInstance($saltedpasswords['saltedPWHashingMethod']);
-
-                $check = $tx_saltedpasswords->checkPassword($submittedPassword, $originalPassword);
-            }
-        }
-
-        if ($GLOBALS['TYPO3_CONF_VARS']['FE']['passwordHashing']['className']) {
-            return GeneralUtility::makeInstance(PasswordHashFactory::class)->get($originalPassword, 'FE')->checkPassword($submittedPassword, $originalPassword);
-        }
-
-        return $check;
     }
 
     /**
