@@ -23,7 +23,7 @@ $GLOBALS['TCA']['tt_content']['types']['list']['subtypes_addlist'][$extensionNam
 $GLOBALS['TCA']['tt_content']['types']['list']['subtypes_excludelist'][$extensionName . '_pi1'] = 'layout, select_key, pages, recursive';
 
 // Extension Konfiguration auslesen.
-$confArray = unserialize($GLOBALS['TYPO3_CONF_VARS']['EXT']['extConf'][$extensionName]);
+$confArray = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS'][$extensionName];
 
 // Flexformfunktionen einbinden.
 include_once(ExtensionManagementUtility::extPath($extensionName) . 'lib/class.tx_datamintsfeuser_flexform.php');
