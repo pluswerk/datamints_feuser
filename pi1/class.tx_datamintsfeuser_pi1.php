@@ -520,7 +520,7 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
 
             // Besonderes Feld das fest in der Extension verbaut ist (captcha), und ueberprueft werden soll.
             // Fuer "jm_recaptcha" darf hier $value nicht ueberprueft werden, wurde aber vorerst entfernt, da das an mehreren Stellen beruecksichtigt werden muesste!
-            if ($fieldName == self::specialfieldKeyCaptcha && $value) {
+            if ($fieldName == self::specialfieldKeyCaptcha && $value !== null && $value !== '') {
                 $captchaCheck = $this->checkCaptcha($value);
 
                 if ($captchaCheck) {
@@ -2723,8 +2723,10 @@ class tx_datamintsfeuser_pi1 extends AbstractPlugin
             $renderingContext = GeneralUtility::makeInstance(RenderingContextFactory::class)->create();
             $field = new Field();
             $field->_setProperty('uid', $this->contentId);
+						/** @var class-string $className */
+						$className = GeneralUtility::getClassName(CaptchaViewHelper::class);
             $result = $viewHelperInvoker->invoke(
-                CaptchaViewHelper::class,
+							$className,
                 [
                     'field' => $field,
                     'class' => $this->conf['captcha.']['class'] ?: '',
